@@ -1,0 +1,39 @@
+# *.iml
+# .gradle
+# /local.properties
+# /.idea/caches
+# /.idea/libraries
+# /.idea/modules.xml
+# /.idea/workspace.xml
+# /.idea/navEditor.xml
+# /.idea/assetWizardSettings.xml
+# .DS_Store
+# /build
+# /captures
+# .externalNativeBuild
+# .cxx
+# local.properties
+
+# Direktori build dan konfigurasi
+*.iml
+/.idea
+/build
+/captures
+/local.properties
+/.gradle
+/out
+
+# Pengaturan dan cache Android Studio
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+
+# File sistem yang tidak diperlukan
+.DS_Store
+
+# File hasil build dan konfigurasi eksternal
+/externalNativeBuild
+.cxx
