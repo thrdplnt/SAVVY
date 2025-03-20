@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "93573301600",
+    "project_id": "auth-savvy",
+    "storage_bucket": "auth-savvy.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:93573301600:android:a093ab3819b69b29494a05",
+        "android_client_info": {
+          "package_name": "com.example.savvy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASVMPf200fPlIn867BRZ1PYWlOWRCmrYU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
