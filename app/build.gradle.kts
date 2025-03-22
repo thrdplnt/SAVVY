@@ -108,5 +108,8 @@ dependencies {
     implementation ("com.google.firebase:firebase-firestore:24.10.2")
     implementation ("com.google.firebase:firebase-auth-ktx:22.3.1")
 
+    implementation ("com.google.accompanist:accompanist-pager:0.25.1")
+    implementation ("com.google.accompanist:accompanist-pager-indicators:0.25.1")
+
 
 }

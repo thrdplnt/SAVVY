@@ -11,7 +11,6 @@ val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
 
 // palet warna savvy
-
 val Navy = Color(0xFF2F4156)
 val Teal = Color(0xFF567C8D)
 val SkyBlue = Color(0xFFC8D9E6)
