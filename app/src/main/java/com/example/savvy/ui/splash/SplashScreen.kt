@@ -10,54 +10,54 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.savvy.R
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 
 @Composable
 fun SplashScreen(
-    onNavigateToNext: () -> Unit
+    onNavigateToOnboarding: () -> Unit,
+    onNavigateToHome: () -> Unit
 ) {
     val scale = remember { Animatable(0f) }
 
-    // Animasi scale untuk logo
     LaunchedEffect(Unit) {
         scale.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 1000)
         )
         delay(2000) // Tampilkan splash screen selama 2 detik
-        onNavigateToNext()
+
+        if (FirebaseAuth.getInstance().currentUser != null) {
+            onNavigateToHome()
+        } else {
+            onNavigateToOnboarding()
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White),
+            .background(Color(0xFFF5EFEB)),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ic_launcher_foreground), // Ganti dengan logo aplikasi Anda
+                painter = painterResource(id = R.drawable.logo_savvy),
                 contentDescription = "App Logo",
                 modifier = Modifier
-                    .size(150.dp)
-//                    .scale(scale.value)
+                    .size(300.dp)
+                    .graphicsLayer(scaleX = scale.value, scaleY = scale.value)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Savvy",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
         }
     }
 }

@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-
-    <style name="Theme.Savvy" parent="android:Theme.Material.Light.NoActionBar" />
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Savvy" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Menghapus window background default -->
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- Menonaktifkan animasi masuk default untuk menghindari flicker -->
+        <item name="android:windowAnimationStyle">@null</item>
+        <!-- Warna status bar -->
+        <item name="android:statusBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <!-- Warna navigation bar -->
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <!-- Pastikan tidak ada splash screen default -->
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
 </resources>

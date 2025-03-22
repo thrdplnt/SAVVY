@@ -11,8 +11,10 @@ import com.example.savvy.ui.home.HomeScreen
 import com.example.savvy.ui.onboarding.OnboardingScreen
 import com.example.savvy.ui.profile.ProfileScreen
 import com.example.savvy.ui.search.SearchScreen
+import com.example.savvy.ui.splash.SplashScreen
 
 sealed class Screen(val route: String) {
+    object Splash : Screen("splash")
     object Onboarding : Screen("onboarding")
     object Register : Screen("register")
     object Login : Screen("login")
@@ -28,6 +30,20 @@ fun AppNavHost(
     startDestination: String
 ) {
     NavHost(navController = navController, startDestination = startDestination) {
+        composable(Screen.Splash.route) {
+            SplashScreen(
+                onNavigateToOnboarding = {
+                    navController.navigate(Screen.Onboarding.route) {
+                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    }
+                },
+                onNavigateToHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(Screen.Onboarding.route) {
             OnboardingScreen(
                 onNavigateToRegister = {
@@ -48,9 +64,17 @@ fun AppNavHost(
         composable(Screen.Login.route) {
             LoginScreen(navController = navController)
         }
-        composable(Screen.Home.route) { HomeScreen(onAnimeClick = { }) }
-        composable(Screen.Search.route) { SearchScreen(onAnimeClick = { }) }
-        composable(Screen.Bookmark.route) { BookmarkScreen(onAnimeClick = { }) }
-        composable(Screen.Profile.route) { ProfileScreen(navController = navController) }
+        composable(Screen.Home.route) {
+            HomeScreen(onAnimeClick = { })
+        }
+        composable(Screen.Search.route) {
+            SearchScreen(onAnimeClick = { })
+        }
+        composable(Screen.Bookmark.route) {
+            BookmarkScreen(onAnimeClick = { })
+        }
+        composable(Screen.Profile.route) {
+            ProfileScreen(navController = navController)
+        }
     }
 }

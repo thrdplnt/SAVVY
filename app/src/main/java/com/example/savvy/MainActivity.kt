@@ -18,24 +18,23 @@ import com.example.savvy.ui.navigation.NavigationGraph
 import com.example.savvy.ui.theme.SavvyTheme
 import dagger.hilt.android.AndroidEntryPoint
 import com.google.firebase.auth.FirebaseAuth
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
+        // Mengatur window agar edge-to-edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+
+//        enableEdgeToEdge()
         setContent {
             SavvyTheme {
                 NavigationGraph()
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    SavvyTheme {
-        NavigationGraph()
     }
 }
