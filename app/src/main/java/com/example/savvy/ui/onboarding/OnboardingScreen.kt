@@ -77,7 +77,7 @@ fun OnboardingScreen(
                 )
             ) {
                 Text(
-                    text = if (pagerState.currentPage == 2) "GET STARTED!" else "NEXT",
+                    text = if (pagerState.currentPage == 2) "Get Started!" else "Next",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -312,7 +312,7 @@ fun OnboardingSlide4(
                 )
             ) {
                 Text(
-                    text = "Create account",
+                    text = "Create Account",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
