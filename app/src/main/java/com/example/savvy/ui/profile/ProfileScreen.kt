@@ -93,7 +93,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Beige, shape = RoundedCornerShape(8.dp))
-                    .clickable { /* Navigasi ke halaman edit profil */ }
+                    .clickable { navController.navigate(Screen.EditProfile.route) } // Navigasi ke EditProfileScreen
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween

@@ -14,6 +14,7 @@ import com.example.savvy.ui.profile.ProfileScreen
 import com.example.savvy.ui.splash.SplashScreen
 import com.example.savvy.ui.navigation.Screen
 import com.example.savvy.ui.riwayat.RiwayatScreen
+import com.example.savvy.ui.profile.EditProfileScreen
 
 @Composable
 fun AppNavHost(
@@ -69,6 +70,9 @@ fun AppNavHost(
         }
         composable(Screen.Riwayat.route) {
             RiwayatScreen(navController = navController)
+        }
+        composable(Screen.EditProfile.route) { // Tambahkan rute ini
+            EditProfileScreen(navController = navController)
         }
     }
 }
