@@ -11,9 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.savvy.R
 import com.example.savvy.ui.auth.AuthViewModel
@@ -26,102 +24,108 @@ fun ProfileScreen(
     navController: NavController,
     viewModel: AuthViewModel = viewModel()
 ) {
-    // State untuk melacak apakah user telah logout
     var hasLoggedOut by remember { mutableStateOf(false) }
-    // State untuk menampilkan dialog konfirmasi logout
     var showDialog by remember { mutableStateOf(false) }
-
-    // Ambil data user dari FirebaseAuth
     val user = FirebaseAuth.getInstance().currentUser
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface) // Gunakan surface dari tema
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Profile Section
         Image(
-            painter = painterResource(id = R.drawable.ic_launcher_foreground), // Ganti dengan foto profil user
+            painter = painterResource(id = R.drawable.ic_launcher_foreground),
             contentDescription = "Profile Picture",
             modifier = Modifier
                 .size(120.dp)
                 .clip(CircleShape)
-                .background(Color.Gray)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)) // Gunakan warna dari tema
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Tampilkan nama user dari Firebase, atau default ke "Nama User"
         Text(
             text = user?.displayName ?: "Nama User",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onSurface
         )
 
-        // Tampilkan email user dari Firebase, atau default ke "user@example.com"
         Text(
             text = user?.email ?: "user@example.com",
-            fontSize = 16.sp,
-            color = Color.Gray
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Akun Saya Button
         Button(
             onClick = { /* Navigasi ke halaman update profil */ },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
+                .height(50.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondary,
+                contentColor = MaterialTheme.colorScheme.onSecondary
+            )
         ) {
-            Text("Akun Saya")
+            Text("Akun Saya", style = MaterialTheme.typography.bodyMedium)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Logout Button
         Button(
             onClick = { showDialog = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFE57373), // Merah lembut untuk logout
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
         ) {
-            Text("Logout", color = Color.White)
+            Text("Logout", style = MaterialTheme.typography.bodyMedium)
         }
 
-        // Dialog Konfirmasi Logout
         if (showDialog) {
             AlertDialog(
                 onDismissRequest = { showDialog = false },
-                title = { Text("Konfirmasi Logout") },
-                text = { Text("Apakah Anda yakin ingin logout?") },
+                title = { Text("Konfirmasi Logout", style = MaterialTheme.typography.headlineMedium) },
+                text = { Text("Apakah Anda yakin ingin logout?", style = MaterialTheme.typography.bodyLarge) },
                 confirmButton = {
                     Button(
                         onClick = {
                             viewModel.logout()
                             hasLoggedOut = true
                             showDialog = false
-                        }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary,
+                            contentColor = MaterialTheme.colorScheme.onSecondary
+                        )
                     ) {
-                        Text("Ya")
+                        Text("Ya", style = MaterialTheme.typography.bodyMedium)
                     }
                 },
                 dismissButton = {
-                    Button(onClick = { showDialog = false }) {
-                        Text("Tidak")
+                    Button(
+                        onClick = { showDialog = false },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary
+                        )
+                    ) {
+                        Text("Tidak", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             )
         }
 
-        // Handle navigation after logout
         LaunchedEffect(hasLoggedOut) {
             if (hasLoggedOut) {
                 navController.navigate(Screen.Onboarding.route) {
-                    popUpTo(0) { inclusive = true } // Clear semua back stack
+                    popUpTo(0) { inclusive = true }
                 }
             }
         }

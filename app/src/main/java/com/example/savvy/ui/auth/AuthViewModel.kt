@@ -14,10 +14,16 @@ class AuthViewModel : ViewModel() {
     private val _authState = MutableStateFlow(AuthState())
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    fun register(name: String, email: String, password: String) {
+    fun register(name: String, email: String, password: String, confirmPassword: String? = null) {
         // Validasi input
         if (name.isEmpty() || email.isEmpty() || password.isEmpty()) {
             _authState.update { currentState -> currentState.copy(errorMessage = "Nama, email, dan password harus diisi") }
+            return
+        }
+
+        // Validasi konfirmasi password
+        if (confirmPassword != null && password != confirmPassword) {
+            _authState.update { currentState -> currentState.copy(errorMessage = "Password dan konfirmasi password tidak cocok") }
             return
         }
 

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.savvy.ui.tambah.TambahTransaksiScreen
 import com.example.savvy.ui.auth.LoginScreen
 import com.example.savvy.ui.auth.RegisterScreen
 import com.example.savvy.ui.bookmark.BookmarkScreen
@@ -12,17 +13,7 @@ import com.example.savvy.ui.onboarding.OnboardingScreen
 import com.example.savvy.ui.profile.ProfileScreen
 import com.example.savvy.ui.search.SearchScreen
 import com.example.savvy.ui.splash.SplashScreen
-
-sealed class Screen(val route: String) {
-    object Splash : Screen("splash")
-    object Onboarding : Screen("onboarding")
-    object Register : Screen("register")
-    object Login : Screen("login")
-    object Home : Screen("home")
-    object Search : Screen("search")
-    object Bookmark : Screen("bookmark")
-    object Profile : Screen("profile")
-}
+import com.example.savvy.ui.navigation.Screen
 
 @Composable
 fun AppNavHost(
@@ -75,6 +66,15 @@ fun AppNavHost(
         }
         composable(Screen.Profile.route) {
             ProfileScreen(navController = navController)
+        }
+        composable(Screen.Tambah.route) {
+            TambahTransaksiScreen(navController = navController)
+        }
+        composable(Screen.Anggaran.route) {
+            TambahTransaksiScreen(navController = navController)
+        }
+        composable(Screen.Riwayat.route) {
+            TambahTransaksiScreen(navController = navController)
         }
     }
 }

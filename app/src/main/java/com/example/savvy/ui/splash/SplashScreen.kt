@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.example.savvy.R
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
+import com.example.savvy.ui.theme.Beige
 
 @Composable
 fun SplashScreen(
@@ -43,7 +44,7 @@ fun SplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5EFEB)),
+            .background(Beige),
         contentAlignment = Alignment.Center
     ) {
         Column(
