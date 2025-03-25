@@ -17,14 +17,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.components.SavvyTextField
 import com.example.savvy.ui.navigation.Screen
 import com.example.savvy.ui.theme.Beige
+import com.example.savvy.ui.theme.ErrorRed
 import com.example.savvy.ui.theme.Navy
+import com.example.savvy.ui.theme.White
+import com.example.savvy.ui.theme.SkyBlue
 
 @Composable
 fun RegisterScreen(
@@ -41,7 +43,7 @@ fun RegisterScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Beige) // Beige
     ) {
         IconButton(
             onClick = { navController.popBackStack() },
@@ -51,7 +53,7 @@ fun RegisterScreen(
             Icon(
                 imageVector = Icons.Default.ArrowBack,
                 contentDescription = "Back",
-                tint = MaterialTheme.colorScheme.onBackground
+                tint = Navy // Navy
             )
         }
 
@@ -64,8 +66,8 @@ fun RegisterScreen(
         ) {
             Text(
                 text = "SIGN UP",
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.headlineLarge, // Poppins Bold 24sp
+                color = Navy, // Navy
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .widthIn(max = 411.dp)
@@ -78,7 +80,7 @@ fun RegisterScreen(
                 modifier = Modifier
                     .widthIn(max = 500.dp)
                     .fillMaxWidth(0.89f)
-                    .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(8.dp))
+                    .background(White, shape = RoundedCornerShape(8.dp)) // White
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -122,8 +124,8 @@ fun RegisterScreen(
                 authState.errorMessage?.let {
                     Text(
                         text = it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall, // Inter Regular 12sp
+                        color = ErrorRed, // Warna error dari MaterialTheme
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),
@@ -133,7 +135,7 @@ fun RegisterScreen(
 
                 if (authState.isLoading) {
                     CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
+                        color = Navy, // Navy
                         modifier = Modifier.padding(8.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -146,7 +148,7 @@ fun RegisterScreen(
                     onClick = {
                         viewModel.register(name, email, password, confirmPassword)
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(), // Mengikuti lebar kontainer
                     enabled = !authState.isLoading
                 )
 
@@ -154,12 +156,12 @@ fun RegisterScreen(
 
                 ClickableText(
                     text = buildAnnotatedString {
-                        withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
+                        withStyle(style = SpanStyle(color = Navy)) { // Navy
                             append("Have an account? ")
                         }
                         withStyle(
                             style = SpanStyle(
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = Navy, // Navy
                                 textDecoration = TextDecoration.Underline
                             )
                         ) {
@@ -175,20 +177,20 @@ fun RegisterScreen(
                         }
                     },
                     modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall.copy(
+                    style = MaterialTheme.typography.labelSmall.copy( // Inter Regular 12sp
                         textAlign = TextAlign.Center
                     )
                 )
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
 
-            LaunchedEffect(authState.isSuccess) {
-                if (authState.isSuccess) {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Register.route) { inclusive = true }
-                    }
-                }
+    LaunchedEffect(authState.isSuccess) {
+        if (authState.isSuccess) {
+            navController.navigate(Screen.Home.route) {
+                popUpTo(Screen.Register.route) { inclusive = true }
             }
         }
     }

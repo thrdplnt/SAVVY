@@ -6,13 +6,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.savvy.ui.theme.Beige
+import com.example.savvy.ui.theme.Navy
 
 @Composable
 fun SavvyButton(
@@ -20,7 +21,8 @@ fun SavvyButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    textColor: Color = Color.Black
+    textColor: Color = Navy, // Default ke Navy
+    backgroundColor: Color = Beige // Default ke Beige
 ) {
     Button(
         onClick = onClick,
@@ -28,20 +30,21 @@ fun SavvyButton(
             .width(300.dp)
             .height(48.11.dp)
             .background(
-                color = Color(0xFFF5EFEB), // Warna background #F5EFEB
-                shape = RoundedCornerShape(24.dp) // Corner radius sesuai clip-path
+                color = backgroundColor,
+                shape = RoundedCornerShape(24.dp)
             ),
         enabled = enabled,
         shape = RoundedCornerShape(24.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFFF5EFEB),
-            contentColor = textColor
+            containerColor = backgroundColor,
+            contentColor = textColor,
+            disabledContainerColor = backgroundColor.copy(alpha = 0.5f),
+            disabledContentColor = textColor.copy(alpha = 0.5f)
         )
     ) {
         Text(
             text = text,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium, // Inter Medium 16sp
             color = textColor
         )
     }

@@ -13,6 +13,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.savvy.ui.theme.Navy
+import com.example.savvy.ui.theme.White
 
 @Composable
 fun SavvyTextField(
@@ -26,16 +28,17 @@ fun SavvyTextField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
+        label = { Text(label, style = MaterialTheme.typography.bodyLarge) }, // Inter Regular 16sp
         modifier = modifier.fillMaxWidth(),
         visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         shape = RoundedCornerShape(12.dp),
+        textStyle = MaterialTheme.typography.bodyLarge, // Inter Regular 16sp untuk input
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.primary,
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+            focusedBorderColor = Navy, // Navy
+            unfocusedBorderColor = Navy, // Navy
+            focusedContainerColor = White, // White
+            unfocusedContainerColor = White // White
         )
     )
 }
