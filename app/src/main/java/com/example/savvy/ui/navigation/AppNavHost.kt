@@ -4,16 +4,16 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.savvy.ui.anggaran.AnggaranScreen
 import com.example.savvy.ui.tambah.TambahTransaksiScreen
 import com.example.savvy.ui.auth.LoginScreen
 import com.example.savvy.ui.auth.RegisterScreen
-import com.example.savvy.ui.bookmark.BookmarkScreen
 import com.example.savvy.ui.home.HomeScreen
 import com.example.savvy.ui.onboarding.OnboardingScreen
 import com.example.savvy.ui.profile.ProfileScreen
-import com.example.savvy.ui.search.SearchScreen
 import com.example.savvy.ui.splash.SplashScreen
 import com.example.savvy.ui.navigation.Screen
+import com.example.savvy.ui.riwayat.RiwayatScreen
 
 @Composable
 fun AppNavHost(
@@ -56,13 +56,7 @@ fun AppNavHost(
             LoginScreen(navController = navController)
         }
         composable(Screen.Home.route) {
-            HomeScreen(onAnimeClick = { })
-        }
-        composable(Screen.Search.route) {
-            SearchScreen(onAnimeClick = { })
-        }
-        composable(Screen.Bookmark.route) {
-            BookmarkScreen(onAnimeClick = { })
+            HomeScreen(navController = navController)
         }
         composable(Screen.Profile.route) {
             ProfileScreen(navController = navController)
@@ -71,10 +65,10 @@ fun AppNavHost(
             TambahTransaksiScreen(navController = navController)
         }
         composable(Screen.Anggaran.route) {
-            TambahTransaksiScreen(navController = navController)
+            AnggaranScreen(navController = navController)
         }
         composable(Screen.Riwayat.route) {
-            TambahTransaksiScreen(navController = navController)
+            RiwayatScreen(navController = navController)
         }
     }
 }
