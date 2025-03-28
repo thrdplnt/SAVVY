@@ -4,17 +4,16 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.example.savvy.ui.anggaran.AnggaranScreen
-import com.example.savvy.ui.tambah.TambahTransaksiScreen
 import com.example.savvy.ui.auth.LoginScreen
 import com.example.savvy.ui.auth.RegisterScreen
+import com.example.savvy.ui.anggaran.AnggaranScreen
 import com.example.savvy.ui.home.HomeScreen
 import com.example.savvy.ui.onboarding.OnboardingScreen
+import com.example.savvy.ui.profile.EditProfileScreen // Tambahkan impor ini
 import com.example.savvy.ui.profile.ProfileScreen
-import com.example.savvy.ui.splash.SplashScreen
-import com.example.savvy.ui.navigation.Screen
 import com.example.savvy.ui.riwayat.RiwayatScreen
-import com.example.savvy.ui.profile.EditProfileScreen
+import com.example.savvy.ui.splash.SplashScreen
+import com.example.savvy.ui.tambah.TambahTransaksiScreen
 
 @Composable
 fun AppNavHost(
@@ -39,14 +38,10 @@ fun AppNavHost(
         composable(Screen.Onboarding.route) {
             OnboardingScreen(
                 onNavigateToRegister = {
-                    navController.navigate(Screen.Register.route) {
-                        popUpTo(Screen.Onboarding.route) { inclusive = true }
-                    }
+                    navController.navigate(Screen.Register.route)
                 },
                 onNavigateToLogin = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(Screen.Onboarding.route) { inclusive = true }
-                    }
+                    navController.navigate(Screen.Login.route)
                 }
             )
         }
@@ -59,8 +54,8 @@ fun AppNavHost(
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)
         }
-        composable(Screen.Profile.route) {
-            ProfileScreen(navController = navController)
+        composable(Screen.Riwayat.route) {
+            RiwayatScreen(navController = navController)
         }
         composable(Screen.Tambah.route) {
             TambahTransaksiScreen(navController = navController)
@@ -68,11 +63,11 @@ fun AppNavHost(
         composable(Screen.Anggaran.route) {
             AnggaranScreen(navController = navController)
         }
-        composable(Screen.Riwayat.route) {
-            RiwayatScreen(navController = navController)
+        composable(Screen.Profile.route) {
+            ProfileScreen(navController = navController)
         }
-        composable(Screen.EditProfile.route) { // Tambahkan rute ini
-            EditProfileScreen(navController = navController)
+        composable(Screen.EditProfile.route) {
+            EditProfileScreen(navController = navController) // Perbaiki ke EditProfileScreen
         }
     }
 }
