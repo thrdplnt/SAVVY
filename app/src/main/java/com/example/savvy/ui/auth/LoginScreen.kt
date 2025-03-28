@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.savvy.R
+import com.example.savvy.ui.components.SavvyButton // Tambahkan impor ini
 import com.example.savvy.ui.navigation.Screen
 import com.example.savvy.ui.theme.*
 
@@ -154,7 +155,6 @@ fun LoginScreen(
                             .fillMaxWidth(),
                         textAlign = TextAlign.Center
                     )
-//                    Spacer(modifier = Modifier.height(8.dp)) // Jarak tambahan setelah pesan error
                 }
 
                 // Loading Indicator
@@ -169,27 +169,19 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                // Login Button
-                Button(
+                // Login Button (Menggunakan SavvyButton)
+                SavvyButton(
+                    text = "Log In",
                     onClick = {
                         viewModel.login(email, password)
                     },
                     modifier = Modifier
-                        .fillMaxWidth() // Mengisi lebar penuh kontainer
+                        .fillMaxWidth()
                         .height(50.dp),
                     enabled = !authState.isLoading,
-                    shape = RoundedCornerShape(25.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Beige,
-                        contentColor = Navy
-                    )
-                ) {
-                    Text(
-                        text = "Log In",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                    textColor = Navy,
+                    backgroundColor = Beige
+                )
 
                 Spacer(modifier = Modifier.height(16.dp)) // Jarak lebih besar antara tombol dan teks
 
