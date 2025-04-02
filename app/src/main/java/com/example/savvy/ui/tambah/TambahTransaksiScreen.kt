@@ -24,13 +24,12 @@ import androidx.navigation.NavOptions
 import com.example.savvy.data.SupabaseStorageUploader
 import com.example.savvy.ui.components.SavvyDropdownMenu
 import com.example.savvy.ui.components.SavvyTextField
-import com.example.savvy.ui.navigation.Screen
+import com.example.savvy.data.Screen
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
-import com.example.savvy.ui.transaction.Transaction
+import com.example.savvy.data.Transaction
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -38,7 +37,6 @@ import java.util.*
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import javax.inject.Inject
 
 // Fungsi untuk memeriksa koneksi internet
 fun isNetworkAvailable(context: Context): Boolean {

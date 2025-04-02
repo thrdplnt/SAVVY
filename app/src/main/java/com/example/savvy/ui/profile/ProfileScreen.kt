@@ -23,7 +23,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.savvy.R
 import com.example.savvy.ui.auth.AuthViewModel
 import com.example.savvy.ui.components.SavvyButton
-import com.example.savvy.ui.navigation.Screen
+import com.example.savvy.data.Screen
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White

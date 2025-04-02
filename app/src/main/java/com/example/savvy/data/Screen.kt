@@ -1,4 +1,4 @@
-package com.example.savvy.ui.navigation
+package com.example.savvy.data
 
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")

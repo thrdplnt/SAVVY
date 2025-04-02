@@ -21,12 +21,11 @@ import androidx.navigation.NavController
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.components.SavvyTextField
-import com.example.savvy.ui.navigation.Screen
+import com.example.savvy.data.Screen
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.ErrorRed
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White
-import com.example.savvy.ui.theme.SkyBlue
 
 @Composable
 fun RegisterScreen(

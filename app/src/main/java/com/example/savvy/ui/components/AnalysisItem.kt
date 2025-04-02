@@ -14,7 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.savvy.ui.navigation.Screen
+import com.example.savvy.data.Screen
 import com.example.savvy.ui.theme.Navy
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource

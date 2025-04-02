@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.savvy.R
 import com.example.savvy.ui.components.AnalysisItem
-import com.example.savvy.ui.navigation.Screen
+import com.example.savvy.data.Screen
 import com.example.savvy.ui.theme.Navy
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore

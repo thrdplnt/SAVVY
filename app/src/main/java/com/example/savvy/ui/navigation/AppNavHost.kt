@@ -19,6 +19,7 @@ import com.example.savvy.ui.tambah.TambahTransaksiViewModel
 import com.example.savvy.ui.riwayat.CategoryDetailScreen
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.example.savvy.data.Screen
 
 
 @Composable
