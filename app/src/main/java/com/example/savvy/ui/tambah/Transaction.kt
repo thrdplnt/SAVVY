@@ -11,5 +11,6 @@ data class Transaction(
     val note: String = "", // Catatan opsional
     @ServerTimestamp
     val date: Date? = null, // Tanggal transaksi (otomatis dari server)
-    val userId: String = "" // ID pengguna
+    val userId: String = "", // ID pengguna
+    val imageUrl: String? = null // URL gambar dari ImgBB
 )

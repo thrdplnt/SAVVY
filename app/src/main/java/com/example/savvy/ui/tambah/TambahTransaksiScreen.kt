@@ -1,7 +1,10 @@
 package com.example.savvy.ui.tambah
 
 import android.app.DatePickerDialog
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
+import com.example.savvy.data.SupabaseStorageUploader
 import com.example.savvy.ui.components.SavvyDropdownMenu
 import com.example.savvy.ui.components.SavvyTextField
 import com.example.savvy.ui.navigation.Screen
@@ -26,16 +30,33 @@ import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.transaction.Transaction
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import javax.inject.Inject
+
+// Fungsi untuk memeriksa koneksi internet
+fun isNetworkAvailable(context: Context): Boolean {
+    val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}
 
 @Composable
 fun TambahTransaksiScreen(
-    navController: NavController
+    navController: NavController,
+    uploader: SupabaseStorageUploader // Inject uploader
 ) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
+    val coroutineScope = rememberCoroutineScope()
 
     // State untuk input form
     var transactionKind by remember { mutableStateOf("") } // Pemasukan atau Pengeluaran
@@ -46,6 +67,7 @@ fun TambahTransaksiScreen(
     var dateText by remember { mutableStateOf("") }
     var date by remember { mutableStateOf<Date?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) } // State untuk menyimpan URI gambar
 
     // Opsi untuk dropdown
     val transactionKinds = listOf("Pemasukan", "Pengeluaran")
@@ -75,6 +97,15 @@ fun TambahTransaksiScreen(
         calendar.get(Calendar.DAY_OF_MONTH)
     )
 
+    // Launcher untuk memilih gambar dari galeri
+    val pickImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            imageUri = it
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -101,11 +132,10 @@ fun TambahTransaksiScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Input Jumlah Uang (dipindah ke atas)
+        // Input Jumlah Uang
         SavvyTextField(
             value = amount,
             onValueChange = { newValue ->
-                // Hanya izinkan angka dan tanda desimal
                 if (newValue.all { it.isDigit() || it == '.' }) {
                     amount = newValue
                 }
@@ -116,7 +146,7 @@ fun TambahTransaksiScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Dropdown Pemasukan/Pengeluaran (dipindah setelah jumlah)
+        // Dropdown Pemasukan/Pengeluaran
         SavvyDropdownMenu(
             label = "Pilih Jenis Transaksi",
             items = transactionKinds,
@@ -188,14 +218,16 @@ fun TambahTransaksiScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Placeholder untuk Tambahkan Gambar
+        // Tombol Tambahkan Gambar
         OutlinedButton(
-            onClick = { /* Placeholder untuk menambahkan gambar */ },
+            onClick = {
+                pickImageLauncher.launch("image/*")
+            },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp)
         ) {
             Text(
-                text = "Tambahkan Gambar",
+                text = if (imageUri != null) "Gambar Dipilih" else "Tambahkan Gambar",
                 color = Navy,
                 fontSize = 16.sp
             )
@@ -203,7 +235,7 @@ fun TambahTransaksiScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Tombol Save (Hanya bagian ini yang diubah)
+        // Tombol Save
         Button(
             onClick = {
                 // Validasi input
@@ -225,35 +257,103 @@ fun TambahTransaksiScreen(
                     return@Button
                 }
 
+                // Periksa koneksi internet
+                if (!isNetworkAvailable(context)) {
+                    Toast.makeText(context, "Tidak ada koneksi internet", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+
                 isLoading = true
 
-                // Buat objek transaksi
-                val transaction = Transaction(
-                    type = type,
-                    amount = amountLong,
-                    category = category,
-                    note = note,
-                    date = date,
-                    userId = user.uid
-                )
+                // Jika ada gambar yang dipilih, unggah ke Supabase Storage
+                // Inside the Button's onClick lambda
+                if (imageUri != null) {
+                    coroutineScope.launch {
+                        try {
+                            // Konversi URI ke File dengan kompresi
+                            val inputStream = context.contentResolver.openInputStream(imageUri!!)
+                            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                            inputStream?.close()
 
-                // Simpan transaksi ke Firestore
-                db.collection("transactions")
-                    .add(transaction)
-                    .addOnSuccessListener { documentReference ->
-                        isLoading = false
-                        Toast.makeText(context, "Tambah Transaksi Sukses Dibuat", Toast.LENGTH_SHORT).show() // Ubah pesan sukses
-                        navController.navigate(
-                            Screen.Riwayat.route,
-                            navOptions = NavOptions.Builder()
-                                .setPopUpTo(Screen.Tambah.route, inclusive = true)
-                                .build()
-                        )
+                            // Kompresi gambar
+                            val byteArrayOutputStream = java.io.ByteArrayOutputStream()
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 50, byteArrayOutputStream)
+                            val compressedByteArray = byteArrayOutputStream.toByteArray()
+
+                            // Simpan ke file sementara
+                            val file = File(context.cacheDir, "temp_image.jpg")
+                            file.writeBytes(compressedByteArray)
+
+                            // Unggah ke Supabase Storage
+                            val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
+                            val imageUrl = uploader.uploadImage(file, destinationFileName) // Ensure correct method name
+
+                            if (imageUrl != null) {
+                                // Buat objek transaksi dengan URL gambar
+                                val transaction = Transaction(
+                                    type = type,
+                                    amount = amountLong,
+                                    category = category,
+                                    note = note,
+                                    date = date,
+                                    userId = user.uid,
+                                    imageUrl = imageUrl
+                                )
+
+                                // Simpan transaksi ke Firestore
+                                db.collection("transactions")
+                                    .add(transaction)
+                                    .addOnSuccessListener { documentReference ->
+                                        isLoading = false
+                                        Toast.makeText(context, "Tambah Transaksi Sukses Dibuat", Toast.LENGTH_SHORT).show()
+                                        navController.navigate(
+                                            Screen.Riwayat.route,
+                                            navOptions = NavOptions.Builder()
+                                                .setPopUpTo(Screen.Tambah.route, inclusive = true)
+                                                .build()
+                                        )
+                                    }
+                                    .addOnFailureListener { e ->
+                                        isLoading = false
+                                        Toast.makeText(context, "Gagal menambahkan transaksi: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                            } else {
+                                isLoading = false
+                                Toast.makeText(context, "Gagal mengunggah gambar ke Supabase", Toast.LENGTH_LONG).show()
+                            }
+                        } catch (e: Exception) {
+                            isLoading = false
+                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
                     }
-                    .addOnFailureListener { e ->
-                        isLoading = false
-                        Toast.makeText(context, "Gagal menambahkan transaksi: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+                } else {
+                    // Jika tidak ada gambar, simpan transaksi tanpa imageUrl
+                    val transaction = Transaction(
+                        type = type,
+                        amount = amountLong,
+                        category = category,
+                        note = note,
+                        date = date,
+                        userId = user.uid
+                    )
+
+                    db.collection("transactions")
+                        .add(transaction)
+                        .addOnSuccessListener { documentReference ->
+                            isLoading = false
+                            Toast.makeText(context, "Tambah Transaksi Sukses Dibuat", Toast.LENGTH_SHORT).show()
+                            navController.navigate(
+                                Screen.Riwayat.route,
+                                navOptions = NavOptions.Builder()
+                                    .setPopUpTo(Screen.Tambah.route, inclusive = true)
+                                    .build()
+                            )
+                        }
+                        .addOnFailureListener { e ->
+                            isLoading = false
+                            Toast.makeText(context, "Gagal menambahkan transaksi: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()
