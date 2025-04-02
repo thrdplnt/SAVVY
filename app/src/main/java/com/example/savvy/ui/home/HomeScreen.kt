@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -212,7 +213,7 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 0.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -265,7 +266,7 @@ fun HomeScreen(
                     )
                 }
             },
-            shape = RoundedCornerShape(25.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Navy,
                 unfocusedBorderColor = Color.Gray
@@ -351,11 +352,8 @@ fun HomeScreen(
                     }
                 }
             }
-
-            // Spacer untuk memastikan konten tidak terpotong oleh navbar
-            Spacer(modifier = Modifier.height(80.dp))
         } else {
-            // Total Saldo dengan Ikon Mata
+            // Total Saldo dengan Ikon Mata (posisi di sebelah kiri)
             if (isLoading) {
                 CircularProgressIndicator(
                     color = Navy,
@@ -367,7 +365,7 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                    horizontalArrangement = Arrangement.Start // Geser ke kiri
                 ) {
                     Text(
                         text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalSaldo)}" else "****",
@@ -389,7 +387,10 @@ fun HomeScreen(
                     text = "Total saldo",
                     fontSize = 16.sp,
                     color = Color.Gray,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Start // Teks "Total saldo" juga di sebelah kiri
                 )
 
                 // Dompetku (di dalam kotak biru dengan shadow)
@@ -417,7 +418,7 @@ fun HomeScreen(
                         ) {
                             Text(
                                 text = "Dompetku",
-                                fontSize = 18.sp,
+                                fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Navy
                             )
@@ -427,9 +428,16 @@ fun HomeScreen(
                                 color = Navy,
                                 modifier = Modifier
                                     .clickable { showDompetDialog = true }
-                                    .padding(start = 8.dp)
+                                    .padding(start = 8.dp),
+                                textDecoration = TextDecoration.Underline // Garis bawah
                             )
                         }
+                        // Garis putih di bawah "Dompetku"
+                        Divider(
+                            color = Color.White,
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -523,15 +531,21 @@ fun HomeScreen(
                     ) {
                         Text(
                             text = "Analisis",
-                            fontSize = 18.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Navy,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 8.dp)
                         )
+                        // Garis hitam di bawah "Analisis"
+                        Divider(
+                            color = Color.Black,
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
 
-                        categoryData.forEach { (category, data) ->
+                        categoryData.entries.forEachIndexed { index, (category, data) ->
                             AnalysisItem(
                                 category = category,
                                 transactionCount = data.first,
@@ -539,13 +553,17 @@ fun HomeScreen(
                                 totalPengeluaran = totalPengeluaran,
                                 navController = navController
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+//                            // Tambahkan garis pemisah kecuali untuk item terakhir
+//                            if (index < categoryData.size - 1) {
+//                                Spacer(modifier = Modifier.height(8.dp))
+//                                Divider(
+//                                    color = Color.Gray.copy(alpha = 0.2f),
+//                                    thickness = 1.dp
+//                                )
+//                            }
                         }
                     }
                 }
-
-                // Spacer untuk memastikan konten tidak terpotong oleh navbar
-                Spacer(modifier = Modifier.height(26.dp))
             }
         }
     }

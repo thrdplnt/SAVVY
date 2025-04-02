@@ -37,6 +37,10 @@ import java.util.*
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
 
 // Fungsi untuk memeriksa koneksi internet
 fun isNetworkAvailable(context: Context): Boolean {
@@ -217,12 +221,35 @@ fun TambahTransaksiScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Tombol Tambahkan Gambar
-        OutlinedButton(
+        Button(
             onClick = {
                 pickImageLauncher.launch("image/*")
             },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp) // Perbesar tinggi tombol
+                .drawBehind {
+                    val strokeWidth = 1.dp.toPx()
+                    val cornerRadius = 8.dp.toPx()
+                    val pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+
+                    drawRoundRect(
+                        color = Navy,
+                        style = Stroke(
+                            width = strokeWidth,
+                            pathEffect = pathEffect
+                        ),
+                        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                    )
+                },
+            shape = RoundedCornerShape(2.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent, // Background transparan
+                contentColor = Navy
+            ),
+            elevation = ButtonDefaults.buttonElevation(
+                defaultElevation = 0.dp // Hilangkan shadow
+            )
         ) {
             Text(
                 text = if (imageUri != null) "Gambar Dipilih" else "Tambahkan Gambar",
