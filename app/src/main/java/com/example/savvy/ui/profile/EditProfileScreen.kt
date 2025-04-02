@@ -21,27 +21,30 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.savvy.R
-import com.example.savvy.ui.auth.AuthViewModel
+import com.example.savvy.data.Screen
 import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.components.SavvyTextField
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.UserProfileChangeRequest
 
 @Composable
 fun EditProfileScreen(
     navController: NavController,
-    authViewModel: AuthViewModel = viewModel()
+    viewModel: ProfileViewModel = hiltViewModel() // Gunakan hiltViewModel()
 ) {
     val user = FirebaseAuth.getInstance().currentUser
+    val profileState by viewModel.profileState.collectAsState()
+    val context = LocalContext.current
+
     var name by remember { mutableStateOf(user?.displayName ?: "") }
     var profileImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    val context = LocalContext.current
+    var photoUrl by remember { mutableStateOf(user?.photoUrl?.toString()) }
 
     // Launcher untuk memilih gambar dari galeri
     val pickImageLauncher = rememberLauncherForActivityResult(
@@ -64,7 +67,7 @@ fun EditProfileScreen(
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = "Kembali",
                 tint = Navy
             )
         }
@@ -86,17 +89,26 @@ fun EditProfileScreen(
                     .clickable { pickImageLauncher.launch("image/*") }
             ) {
                 if (profileImageUri != null) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_foreground), // Ganti dengan gambar dari URI jika diperlukan
-                        contentDescription = "Profile Picture",
+                    AsyncImage(
+                        model = profileImageUri,
+                        contentDescription = "Foto Profil",
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
                     )
+                } else if (photoUrl != null) {
+                    AsyncImage(
+                        model = photoUrl,
+                        contentDescription = "Foto Profil",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        placeholder = painterResource(id = R.drawable.ic_launcher_foreground)
+                    )
                 } else {
                     Image(
                         painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                        contentDescription = "Profile Picture",
+                        contentDescription = "Foto Profil",
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
@@ -104,7 +116,7 @@ fun EditProfileScreen(
                 }
                 Icon(
                     imageVector = Icons.Default.Camera,
-                    contentDescription = "Change Photo",
+                    contentDescription = "Ganti Foto",
                     tint = Navy,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -118,8 +130,8 @@ fun EditProfileScreen(
 
             // Judul
             Text(
-                text = "Edit Profile",
-                style = MaterialTheme.typography.headlineLarge, // Poppins Bold 24sp
+                text = "Edit Profil",
+                style = MaterialTheme.typography.headlineLarge,
                 color = Navy,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -157,38 +169,58 @@ fun EditProfileScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Tombol Edit Profile
-                SavvyButton(
-                    text = "Edit Profile",
-                    onClick = {
-                        if (name.isNotBlank()) {
-                            val profileUpdates = UserProfileChangeRequest.Builder()
-                                .setDisplayName(name)
-                                .build()
+                // Pesan Error (jika ada)
+                profileState.errorMessage?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
 
-                            user?.updateProfile(profileUpdates)
-                                ?.addOnCompleteListener { task ->
-                                    if (task.isSuccessful) {
-                                        Toast.makeText(context, "Profil berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                                        navController.popBackStack()
-                                    } else {
-                                        Toast.makeText(context, "Gagal memperbarui profil", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                        } else {
-                            Toast.makeText(context, "Nama tidak boleh kosong", Toast.LENGTH_SHORT).show()
-                        }
+                // Tombol Simpan Perubahan
+                SavvyButton(
+                    text = "Simpan Perubahan",
+                    onClick = {
+                        viewModel.updateProfile(name, profileImageUri)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
                     textColor = Navy,
                     backgroundColor = Beige,
-                    enabled = name.isNotBlank()
+                    enabled = name.isNotBlank() && !profileState.isLoading
                 )
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+
+        // Indikator loading
+        if (profileState.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Navy,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+        }
+    }
+
+    // Navigasi setelah berhasil memperbarui profil
+    LaunchedEffect(profileState.isSuccess) {
+        if (profileState.isSuccess) {
+            Toast.makeText(context, "Profil berhasil diperbarui", Toast.LENGTH_SHORT).show()
+            navController.popBackStack(Screen.Profile.route, inclusive = false)
         }
     }
 }

@@ -18,11 +18,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.savvy.R
-import com.example.savvy.ui.auth.AuthViewModel
 import com.example.savvy.data.Screen
+import com.example.savvy.ui.auth.AuthViewModel
 import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
@@ -32,7 +33,7 @@ import com.google.firebase.auth.FirebaseAuth
 @Composable
 fun ProfileScreen(
     navController: NavController,
-    viewModel: AuthViewModel = viewModel()
+    viewModel: AuthViewModel = hiltViewModel()
 ) {
     var hasLoggedOut by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
@@ -42,27 +43,44 @@ fun ProfileScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(White)
-            .padding(horizontal = 16.dp), // Margin horizontal 16dp
+            .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(32.dp)) // Jarak atas 32dp, seperti versi sebelumnya
+        Spacer(modifier = Modifier.height(32.dp))
 
         // Foto Profil
-        Image(
-            painter = painterResource(id = R.drawable.ic_launcher_foreground),
-            contentDescription = "Profile Picture",
+        Box(
             modifier = Modifier
                 .size(120.dp)
                 .clip(CircleShape)
-                .background(Navy.copy(alpha = 0.1f)) // Navy dengan opacity
-        )
+                .background(Navy.copy(alpha = 0.1f))
+        ) {
+            if (user?.photoUrl != null) {
+                AsyncImage(
+                    model = user.photoUrl.toString(),
+                    contentDescription = "Foto Profil",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    placeholder = painterResource(id = R.drawable.ic_launcher_foreground)
+                )
+            } else {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                    contentDescription = "Foto Profil",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                )
+            }
+        }
 
-        Spacer(modifier = Modifier.height(16.dp)) // Jarak 16dp
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Nama Pengguna
         Text(
-            text = user?.displayName ?: "Nama User",
-            style = MaterialTheme.typography.headlineLarge, // Poppins Bold 24sp
+            text = user?.displayName ?: "Nama Pengguna",
+            style = MaterialTheme.typography.headlineLarge,
             color = Navy,
             textAlign = TextAlign.Center,
             modifier = Modifier
@@ -73,19 +91,19 @@ fun ProfileScreen(
         // Email
         Text(
             text = user?.email ?: "user@example.com",
-            style = MaterialTheme.typography.labelSmall, // Inter Regular 12sp
+            style = MaterialTheme.typography.labelSmall,
             color = Navy.copy(alpha = 0.6f)
         )
 
-        Spacer(modifier = Modifier.height(32.dp)) // Jarak 32dp sebelum kontainer
+        Spacer(modifier = Modifier.height(32.dp))
 
         // Kontainer Putih
         Column(
             modifier = Modifier
                 .widthIn(max = 500.dp)
-                .fillMaxWidth(0.89f) // Lebar sama seperti RegisterScreen
+                .fillMaxWidth(0.89f)
                 .background(White, shape = RoundedCornerShape(8.dp))
-                .padding(16.dp), // Padding internal 16dp
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Tombol Edit Profile
@@ -93,7 +111,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Beige, shape = RoundedCornerShape(8.dp))
-                    .clickable { navController.navigate(Screen.EditProfile.route) } // Navigasi ke EditProfileScreen
+                    .clickable { navController.navigate(Screen.EditProfile.route) }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -103,33 +121,33 @@ fun ProfileScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Person,
-                        contentDescription = "Edit Profile",
+                        contentDescription = "Edit Profil",
                         tint = Navy,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Edit Profile",
-                        style = MaterialTheme.typography.bodyMedium, // Inter Medium 16sp
+                        text = "Edit Profil",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Navy
                     )
                 }
                 Icon(
                     imageVector = Icons.Default.ArrowForward,
-                    contentDescription = "Arrow",
+                    contentDescription = "Panah",
                     tint = Navy,
                     modifier = Modifier.size(24.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp)) // Jarak 16dp antar elemen
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Tombol Lupa Password
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Beige, shape = RoundedCornerShape(8.dp))
-                    .clickable { navController.navigate(Screen.ForgotPassword.route) } // Navigasi ke ForgotPasswordScreen
+                    .clickable { navController.navigate(Screen.ForgotPassword.route) }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -146,19 +164,19 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Lupa Password",
-                        style = MaterialTheme.typography.bodyMedium, // Inter Medium 16sp
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Navy
                     )
                 }
                 Icon(
                     imageVector = Icons.Default.ArrowForward,
-                    contentDescription = "Arrow",
+                    contentDescription = "Panah",
                     tint = Navy,
                     modifier = Modifier.size(24.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp)) // Jarak 24dp sebelum tombol Logout
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Tombol Logout
             SavvyButton(
@@ -167,12 +185,12 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
-                textColor = White, // Teks putih
-                backgroundColor = Navy // Background Navy
+                textColor = White,
+                backgroundColor = Navy
             )
         }
 
-        Spacer(modifier = Modifier.height(32.dp)) // Jarak bawah 32dp
+        Spacer(modifier = Modifier.height(32.dp))
 
         // Dialog Konfirmasi Logout
         if (showDialog) {
