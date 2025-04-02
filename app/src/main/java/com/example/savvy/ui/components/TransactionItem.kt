@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -15,25 +14,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.savvy.R
+import com.example.savvy.data.Transaction
 import com.example.savvy.ui.theme.Navy
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.*
-
-import androidx.compose.ui.res.imageResource
 import androidx.compose.foundation.Image
 
 @Composable
 fun TransactionItem(
-    category: String,
-    date: String,
-    amount: Long,
-    isPemasukan: Boolean,
-    onClick: () -> Unit = {}
+    transaction: Transaction,
+    onClick: (Transaction) -> Unit
 ) {
+    val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("id"))
+    val dateString = transaction.date?.let { dateFormat.format(it) } ?: "Unknown Date"
+    val amount = transaction.amount
+    val category = transaction.category
+    val isPemasukan = category == "Pemasukan"
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable { onClick(transaction) }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -75,7 +77,7 @@ fun TransactionItem(
                 color = Navy
             )
             Text(
-                text = date,
+                text = dateString,
                 fontSize = 14.sp,
                 color = Color.Gray
             )

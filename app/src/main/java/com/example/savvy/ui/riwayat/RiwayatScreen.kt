@@ -1,7 +1,6 @@
 package com.example.savvy.ui.riwayat
 
 import android.app.DatePickerDialog
-import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -71,6 +70,10 @@ fun RiwayatScreen(
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
+    // State untuk detail transaksi
+    var selectedTransaction by remember { mutableStateOf<Transaction?>(null) }
+    var showTransactionDetails by remember { mutableStateOf(false) }
+
     // Ambil data transaksi dari Firestore
     LaunchedEffect(Unit) {
         val user = auth.currentUser
@@ -131,7 +134,6 @@ fun RiwayatScreen(
     }
 
     // Fungsi untuk memfilter transaksi berdasarkan dompet dan rentang waktu
-    // Fungsi untuk memfilter transaksi berdasarkan dompet dan rentang waktu
     fun filterTransactions() {
         filteredTransactions.clear()
         val calendar = Calendar.getInstance()
@@ -156,7 +158,7 @@ fun RiwayatScreen(
                 calendar.set(Calendar.MILLISECOND, 999)
                 endDateFilter = calendar.time
             }
-            "Seminggu Terakhir" -> {
+            "7 Hari Terakhir" -> {
                 calendar.add(Calendar.WEEK_OF_YEAR, -1)
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
                 calendar.set(Calendar.MINUTE, 0)
@@ -186,13 +188,13 @@ fun RiwayatScreen(
                 endDateFilter = calendar.time
             }
             "Pilih Tanggal" -> {
-                calendar.timeInMillis = startDate.timeInMillis
+                calendar.time = startDate.time
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
                 calendar.set(Calendar.MINUTE, 0)
                 calendar.set(Calendar.SECOND, 0)
                 calendar.set(Calendar.MILLISECOND, 0)
                 startDateFilter = calendar.time
-                calendar.timeInMillis = endDate.timeInMillis
+                calendar.time = endDate.time
                 calendar.set(Calendar.HOUR_OF_DAY, 23)
                 calendar.set(Calendar.MINUTE, 59)
                 calendar.set(Calendar.SECOND, 59)
@@ -240,7 +242,7 @@ fun RiwayatScreen(
                 startDate.set(Calendar.MONTH, month)
                 startDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
                 showStartDatePicker = false
-                // Ensure end date is not before start date
+                // Pastikan tanggal akhir tidak sebelum tanggal mulai
                 if (endDate.before(startDate)) {
                     endDate = startDate.clone() as Calendar
                 }
@@ -260,7 +262,7 @@ fun RiwayatScreen(
                 endDate.set(Calendar.MONTH, month)
                 endDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
                 showEndDatePicker = false
-                // Ensure end date is not before start date
+                // Pastikan tanggal akhir tidak sebelum tanggal mulai
                 if (endDate.before(startDate)) {
                     startDate = endDate.clone() as Calendar
                 }
@@ -277,7 +279,7 @@ fun RiwayatScreen(
             "Januari", "Februari", "Maret", "April", "Mei", "Juni",
             "Juli", "Agustus", "September", "Oktober", "November", "Desember"
         )
-        val years = (2020..2030).toList() // Range of years
+        val years = (2020..2030).toList() // Rentang tahun
         var tempMonth by remember { mutableStateOf(selectedMonth.get(Calendar.MONTH)) }
         var tempYear by remember { mutableStateOf(selectedMonth.get(Calendar.YEAR)) }
 
@@ -296,7 +298,7 @@ fun RiwayatScreen(
                         .fillMaxWidth()
                         .height(200.dp)
                 ) {
-                    // Scrollable Month List
+                    // Daftar bulan yang bisa discroll
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
@@ -318,7 +320,7 @@ fun RiwayatScreen(
                             )
                         }
                     }
-                    // Scrollable Year List
+                    // Daftar tahun yang bisa discroll
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
@@ -450,6 +452,17 @@ fun RiwayatScreen(
                 }
             },
             containerColor = White
+        )
+    }
+
+    // Dialog untuk menampilkan detail transaksi
+    if (showTransactionDetails && selectedTransaction != null) {
+        DetailTransaksi(
+            transaction = selectedTransaction!!,
+            onDismiss = {
+                showTransactionDetails = false
+                selectedTransaction = null
+            }
         )
     }
 
@@ -685,17 +698,12 @@ fun RiwayatScreen(
                         )
                     } else {
                         filteredTransactions.forEach { transaction ->
-                            val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("id"))
-                            val dateString = transaction.date?.let { dateFormat.format(it) } ?: "Unknown Date"
-                            val amount = transaction.amount
-                            val category = transaction.category
-                            val isPemasukan = category == "Pemasukan"
-
                             TransactionItem(
-                                category = category,
-                                date = dateString,
-                                amount = amount,
-                                isPemasukan = isPemasukan
+                                transaction = transaction,
+                                onClick = {
+                                    selectedTransaction = transaction
+                                    showTransactionDetails = true
+                                }
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                         }
