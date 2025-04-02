@@ -16,6 +16,10 @@ import com.example.savvy.ui.riwayat.RiwayatScreen
 import com.example.savvy.ui.splash.SplashScreen
 import com.example.savvy.ui.tambah.TambahTransaksiScreen
 import com.example.savvy.ui.tambah.TambahTransaksiViewModel
+import com.example.savvy.ui.riwayat.CategoryDetailScreen
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+
 
 @Composable
 fun AppNavHost(
@@ -74,6 +78,13 @@ fun AppNavHost(
         }
         composable(Screen.EditProfile.route) {
             EditProfileScreen(navController = navController)
+        }
+        composable(
+            route = Screen.CategoryDetail.route,
+            arguments = listOf(navArgument("category") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val category = backStackEntry.arguments?.getString("category") ?: ""
+            CategoryDetailScreen(navController = navController, category = category)
         }
     }
 }
