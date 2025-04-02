@@ -133,5 +133,6 @@ dependencies {
     // Ktor client engine for Android
     implementation("io.ktor:ktor-client-android:2.3.12")
 
+    implementation ("com.google.android.material:material:1.9.0")
 
 }
