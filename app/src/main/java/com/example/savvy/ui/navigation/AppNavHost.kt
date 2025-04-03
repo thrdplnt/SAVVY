@@ -21,6 +21,7 @@ import com.example.savvy.ui.riwayat.CategoryDetailScreen
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.example.savvy.data.Screen
+import com.example.savvy.ui.riwayat.DetailTransaksiScreen
 
 
 @Composable
@@ -90,6 +91,10 @@ fun AppNavHost(
         }
         composable(Screen.ForgotPassword.route) {
             ForgotPasswordScreen(navController = navController)
+        }
+        composable(Screen.DetailTransaksi.route) { backStackEntry ->
+            val transactionId = backStackEntry.arguments?.getString("transactionId") ?: ""
+            DetailTransaksiScreen(navController = navController, transactionId = transactionId)
         }
     }
 }

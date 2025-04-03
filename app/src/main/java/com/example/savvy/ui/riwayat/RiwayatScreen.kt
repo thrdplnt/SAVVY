@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.savvy.data.Screen
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.components.TransactionItem
 import com.example.savvy.ui.theme.*
@@ -69,10 +70,6 @@ fun RiwayatScreen(
     var endDate by remember { mutableStateOf(Calendar.getInstance()) }
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
-
-    // State untuk detail transaksi
-    var selectedTransaction by remember { mutableStateOf<Transaction?>(null) }
-    var showTransactionDetails by remember { mutableStateOf(false) }
 
     // Ambil data transaksi dari Firestore
     LaunchedEffect(Unit) {
@@ -455,17 +452,6 @@ fun RiwayatScreen(
         )
     }
 
-    // Dialog untuk menampilkan detail transaksi
-    if (showTransactionDetails && selectedTransaction != null) {
-        DetailTransaksi(
-            transaction = selectedTransaction!!,
-            onDismiss = {
-                showTransactionDetails = false
-                selectedTransaction = null
-            }
-        )
-    }
-
     // UI
     Column(
         modifier = Modifier
@@ -701,8 +687,8 @@ fun RiwayatScreen(
                             TransactionItem(
                                 transaction = transaction,
                                 onClick = {
-                                    selectedTransaction = transaction
-                                    showTransactionDetails = true
+                                    // Navigasi ke DetailTransaksiScreen dengan transactionId
+                                    navController.navigate(Screen.DetailTransaksi.createRoute(transaction.id))
                                 }
                             )
                             Spacer(modifier = Modifier.height(12.dp))

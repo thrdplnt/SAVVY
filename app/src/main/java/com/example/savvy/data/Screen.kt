@@ -15,4 +15,7 @@ sealed class Screen(val route: String) {
         fun createRoute(category: String) = "category_detail/$category"
     }
     object ForgotPassword : Screen("forgot_password")
+    object DetailTransaksi : Screen("detail_transaksi/{transactionId}") {
+        fun createRoute(transactionId: String) = "detail_transaksi/$transactionId"
+    }
 }
