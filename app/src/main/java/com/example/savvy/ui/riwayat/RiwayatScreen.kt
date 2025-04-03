@@ -71,8 +71,11 @@ fun RiwayatScreen(
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
+    // State untuk memicu pembaruan data
+    var refreshTrigger by remember { mutableStateOf(0) }
+
     // Ambil data transaksi dari Firestore
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshTrigger) {
         val user = auth.currentUser
         if (user == null) {
             navController.navigate("login")
@@ -699,6 +702,15 @@ fun RiwayatScreen(
 
             // Spacer untuk memastikan konten tidak terpotong oleh navbar
             Spacer(modifier = Modifier.height(80.dp))
+        }
+    }
+
+    // Memicu pembaruan data ketika kembali ke layar ini
+    LaunchedEffect(Unit) {
+        navController.currentBackStackEntry?.savedStateHandle?.getLiveData<String>("refresh")?.observe(
+            navController.currentBackStackEntry!!
+        ) {
+            refreshTrigger++ // Memicu pembaruan data
         }
     }
 }

@@ -13,9 +13,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.example.savvy.data.Screen
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.theme.*
 import com.google.firebase.firestore.FirebaseFirestore
@@ -32,6 +34,8 @@ fun DetailTransaksiScreen(
     var transaction by remember { mutableStateOf<Transaction?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var showImageDialog by remember { mutableStateOf(false) } // State untuk menampilkan dialog gambar
+    var showDeleteDialog by remember { mutableStateOf(false) } // State untuk dialog konfirmasi hapus
+    val context = LocalContext.current
 
     // Ambil data transaksi berdasarkan transactionId
     LaunchedEffect(transactionId) {
@@ -45,6 +49,31 @@ fun DetailTransaksiScreen(
             .addOnFailureListener {
                 isLoading = false
             }
+    }
+
+    // Fungsi untuk menghapus transaksi
+    fun deleteTransaction() {
+        transaction?.id?.let { id ->
+            db.collection("transactions")
+                .document(id)
+                .delete()
+                .addOnSuccessListener {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Transaksi berhasil dihapus",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
+                    navController.popBackStack() // Kembali ke RiwayatScreen setelah hapus
+                }
+                .addOnFailureListener { e ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "Gagal menghapus transaksi: ${e.message}",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+        }
     }
 
     val dateFormat = SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("id"))
@@ -263,6 +292,104 @@ fun DetailTransaksiScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            // Spacer antara box putih dan tombol
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Tombol Edit dan Hapus
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 48.dp), // Margin horizontal sejajar dengan box putih
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Tombol Edit
+                Button(
+                    onClick = {
+                        transaction?.let {
+                            navController.navigate(Screen.EditTransaksi.createRoute(it.id))
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Navy,
+                        contentColor = White
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "Edit",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+
+                // Tombol Hapus
+                Button(
+                    onClick = { showDeleteDialog = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ErrorRed,
+                        contentColor = White
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "Hapus",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
+            // Dialog konfirmasi hapus
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = {
+                        Text(
+                            text = "Konfirmasi Hapus",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Navy
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "Apakah Anda yakin ingin menghapus transaksi ini?",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Navy
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                deleteTransaction()
+                                showDeleteDialog = false
+                            }
+                        ) {
+                            Text(
+                                text = "Hapus",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = ErrorRed
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showDeleteDialog = false }
+                        ) {
+                            Text(
+                                text = "Batal",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Navy
+                            )
+                        }
+                    },
+                    containerColor = White
+                )
             }
         } else {
             Column(

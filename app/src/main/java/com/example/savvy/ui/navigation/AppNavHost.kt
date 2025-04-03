@@ -96,5 +96,14 @@ fun AppNavHost(
             val transactionId = backStackEntry.arguments?.getString("transactionId") ?: ""
             DetailTransaksiScreen(navController = navController, transactionId = transactionId)
         }
+        composable(Screen.EditTransaksi.route) { backStackEntry ->
+            val transactionId = backStackEntry.arguments?.getString("transactionId") ?: ""
+            val viewModel: TambahTransaksiViewModel = hiltViewModel()
+            TambahTransaksiScreen(
+                navController = navController,
+                uploader = viewModel.uploader,
+                transactionId = transactionId // Kirim transactionId untuk mode edit
+            )
+        }
     }
 }
