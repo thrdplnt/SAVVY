@@ -34,7 +34,7 @@ class ProfileViewModel @Inject constructor(
     private val _profileState = MutableStateFlow(ProfileState())
     val profileState: StateFlow<ProfileState> = _profileState.asStateFlow()
 
-    fun updateProfile(name: String, imageUri: Uri?) {
+    fun updateProfile(name: String, imageUri: Uri?, isPhotoRemoved: Boolean) {
         if (name.isBlank()) {
             _profileState.update { currentState ->
                 currentState.copy(errorMessage = "Nama tidak boleh kosong")
@@ -46,7 +46,10 @@ class ProfileViewModel @Inject constructor(
             currentState.copy(isLoading = true, errorMessage = null, isSuccess = false)
         }
 
-        if (imageUri != null) {
+        if (isPhotoRemoved) {
+            // Jika foto dihapus, atur photoUrl ke null
+            updateUserProfile(name, null)
+        } else if (imageUri != null) {
             // Unggah gambar ke Supabase Storage
             viewModelScope.launch {
                 try {
@@ -91,7 +94,7 @@ class ProfileViewModel @Inject constructor(
                 }
             }
         } else {
-            // Jika tidak ada gambar baru, langsung perbarui profil tanpa URL gambar baru
+            // Jika tidak ada gambar baru dan tidak dihapus, gunakan photoUrl yang ada
             updateUserProfile(name, auth.currentUser?.photoUrl?.toString())
         }
     }

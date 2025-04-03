@@ -29,6 +29,7 @@ import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White
 import com.google.firebase.auth.FirebaseAuth
+import androidx.compose.ui.layout.ContentScale
 
 @Composable
 fun ProfileScreen(
@@ -62,6 +63,7 @@ fun ProfileScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(CircleShape),
+                    contentScale = ContentScale.Crop, // Zoom untuk mengisi lingkaran
                     placeholder = painterResource(id = R.drawable.ic_launcher_foreground)
                 )
             } else {
@@ -70,14 +72,14 @@ fun ProfileScreen(
                     contentDescription = "Foto Profil",
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(CircleShape)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop // Zoom untuk mengisi lingkaran
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Nama Pengguna
         Text(
             text = user?.displayName ?: "Nama Pengguna",
             style = MaterialTheme.typography.headlineLarge,
@@ -88,7 +90,6 @@ fun ProfileScreen(
                 .fillMaxWidth(0.77f)
         )
 
-        // Email
         Text(
             text = user?.email ?: "user@example.com",
             style = MaterialTheme.typography.labelSmall,
@@ -97,7 +98,6 @@ fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Kontainer Putih
         Column(
             modifier = Modifier
                 .widthIn(max = 500.dp)
@@ -106,7 +106,6 @@ fun ProfileScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Tombol Edit Profile
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -142,7 +141,6 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Tombol Lupa Password
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -178,7 +176,6 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Tombol Logout
             SavvyButton(
                 text = "Logout",
                 onClick = { showDialog = true },
@@ -192,7 +189,6 @@ fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Dialog Konfirmasi Logout
         if (showDialog) {
             AlertDialog(
                 onDismissRequest = { showDialog = false },
@@ -234,7 +230,6 @@ fun ProfileScreen(
             )
         }
 
-        // Navigasi setelah logout
         LaunchedEffect(hasLoggedOut) {
             if (hasLoggedOut) {
                 navController.navigate(Screen.Onboarding.route) {

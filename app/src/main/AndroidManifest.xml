@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
 
     <application
         android:name="com.example.savvy.SavvyApp"
@@ -21,13 +24,22 @@
         android:name=".MainActivity"
         android:exported="true"
         android:label="@string/app_name"
-        android:theme="@style/Theme.Savvy"> <!-- Pastikan tema juga diterapkan di aktivitas -->
+        android:theme="@style/Theme.Savvy">
         <intent-filter>
             <action android:name="android.intent.action.MAIN" />
 
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
     </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.example.savvy.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 </application>
 
     </manifest>
