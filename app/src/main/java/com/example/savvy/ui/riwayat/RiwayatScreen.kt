@@ -89,8 +89,7 @@ fun RiwayatScreen(
                 var tunai = 0L
                 var tabungan = 0L
                 var nonTunai = 0L
-                var pemasukan = 0L
-                var pengeluaran = 0L
+
                 transactions.clear()
 
                 for (document in querySnapshot.documents) {
@@ -98,19 +97,12 @@ fun RiwayatScreen(
                     if (transaction != null) {
                         transactions.add(transaction)
 
-                        // Hitung saldo per dompet
+                        // Hitung saldo per dompet (tanpa mempertimbangkan filter)
                         val amount = transaction.amount
                         when (transaction.type) {
                             "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
                             "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
                             "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunai += amount else nonTunai -= amount
-                        }
-
-                        // Hitung pemasukan dan pengeluaran
-                        if (transaction.category == "Pemasukan") {
-                            pemasukan += amount
-                        } else {
-                            pengeluaran += amount
                         }
                     }
                 }
@@ -119,8 +111,6 @@ fun RiwayatScreen(
                 saldoTabungan = tabungan
                 saldoNonTunai = nonTunai
                 totalSaldo = tunai + tabungan + nonTunai
-                totalPemasukan = pemasukan
-                totalPengeluaran = pengeluaran
                 isLoading = false
             }
             .addOnFailureListener { e ->
@@ -133,9 +123,12 @@ fun RiwayatScreen(
             }
     }
 
-    // Fungsi untuk memfilter transaksi berdasarkan dompet dan rentang waktu
+    // Fungsi untuk memfilter transaksi dan menghitung Pemasukan/Pengeluaran berdasarkan filter
     fun filterTransactions() {
         filteredTransactions.clear()
+        var pemasukan = 0L
+        var pengeluaran = 0L
+
         val calendar = Calendar.getInstance()
         val currentDate = calendar.time
 
@@ -218,11 +211,21 @@ fun RiwayatScreen(
             val transactionDate = transaction.date ?: return@forEach
             val matchesWallet = selectedWallet == "Semua" || transaction.type == selectedWallet
             val matchesDate = !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
-            println("Transaction: Type=${transaction.type}, Date=${transactionDate}, WalletFilter=$selectedWallet, DateFilter=$startDateFilter to $endDateFilter, Matches=$matchesWallet && $matchesDate")
             if (matchesWallet && matchesDate) {
                 filteredTransactions.add(transaction)
+
+                // Hitung pemasukan dan pengeluaran berdasarkan transaksi yang difilter
+                if (transaction.category == "Pemasukan") {
+                    pemasukan += transaction.amount
+                } else {
+                    pengeluaran += transaction.amount
+                }
             }
         }
+
+        // Update state Pemasukan dan Pengeluaran
+        totalPemasukan = pemasukan
+        totalPengeluaran = pengeluaran
 
         // Sort by date (descending)
         filteredTransactions.sortByDescending { it.date }
