@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -117,8 +118,31 @@ fun TambahTransaksiScreen(
         }
     }
 
+    // Date picker
+    val calendar = Calendar.getInstance()
+    val datePickerDialog = DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            calendar.set(year, month, dayOfMonth)
+            date = calendar.time
+            dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date!!)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    // Launcher untuk memilih gambar dari galeri
+    val pickImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            imageUri = it
+        }
+    }
+
+
     // Fungsi untuk menyimpan atau memperbarui transaksi
-    // Di dalam fungsi saveTransaction
     fun saveTransaction(imageUrl: String?) {
         val transaction = Transaction(
             type = type,
@@ -168,29 +192,6 @@ fun TambahTransaksiScreen(
         }
     }
 
-    // Date picker
-    val calendar = Calendar.getInstance()
-    val datePickerDialog = DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            calendar.set(year, month, dayOfMonth)
-            date = calendar.time
-            dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date!!)
-        },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
-    )
-
-    // Launcher untuk memilih gambar dari galeri
-    val pickImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let {
-            imageUri = it
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -198,13 +199,46 @@ fun TambahTransaksiScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = if (isEditMode) "Edit Transaksi" else "Tambah Transaksi",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = Navy,
-            modifier = Modifier.padding(bottom = 32.dp)
-        )
+        // Baris untuk tombol "X" dan judul
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isEditMode) {
+                // Tombol "X" di kiri atas saat mode edit
+                IconButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier.padding(start = 0.dp) // Margin sama dengan TextField di bawah
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Batal",
+                        tint = Navy
+                    )
+                }
+
+                // Teks "Edit Transaksi" di sebelah kanan tombol "X"
+                Text(
+                    text = "Edit Transaksi",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Navy
+                )
+            } else {
+                // Judul "Tambah Transaksi" di tengah saat bukan mode edit
+                Text(
+                    text = "Tambah Transaksi",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Navy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentWidth(Alignment.CenterHorizontally)
+                )
+            }
+        }
 
         // Dropdown Jenis Transaksi (Tunai/Non-Tunai)
         SavvyDropdownMenu(
@@ -434,6 +468,4 @@ fun TambahTransaksiScreen(
             }
         }
     }
-
-
 }
