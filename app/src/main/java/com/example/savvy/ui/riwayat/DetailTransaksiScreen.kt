@@ -1,6 +1,7 @@
 package com.example.savvy.ui.riwayat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ fun DetailTransaksiScreen(
     val db = FirebaseFirestore.getInstance()
     var transaction by remember { mutableStateOf<Transaction?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var showImageDialog by remember { mutableStateOf(false) } // State untuk menampilkan dialog gambar
 
     // Ambil data transaksi berdasarkan transactionId
     LaunchedEffect(transactionId) {
@@ -225,9 +227,39 @@ fun DetailTransaksiScreen(
                         contentDescription = "Bukti Transaksi",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
+                            .aspectRatio(3f / 4f) // Rasio 3:4 untuk gambar
                             .background(Color.LightGray, shape = RoundedCornerShape(8.dp))
+                            .clickable { showImageDialog = true } // Gambar dapat diklik
                     )
+
+                    // Dialog untuk menampilkan gambar dalam ukuran lebih besar
+                    if (showImageDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showImageDialog = false },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = { showImageDialog = false }
+                                ) {
+                                    Text(
+                                        text = "Tutup",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Navy
+                                    )
+                                }
+                            },
+                            text = {
+                                AsyncImage(
+                                    model = imageUrl,
+                                    contentDescription = "Bukti Transaksi (Penuh)",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(3f / 4f) // Tetap mempertahankan rasio 3:4
+                                        .background(Color.LightGray, shape = RoundedCornerShape(8.dp))
+                                )
+                            },
+                            containerColor = White
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
