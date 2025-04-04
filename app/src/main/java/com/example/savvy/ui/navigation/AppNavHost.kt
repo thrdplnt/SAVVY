@@ -5,6 +5,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.example.savvy.ui.auth.LoginScreen
 import com.example.savvy.ui.auth.RegisterScreen
 import com.example.savvy.ui.anggaran.AnggaranScreen
@@ -19,10 +20,8 @@ import com.example.savvy.ui.tambah.TambahTransaksiScreen
 import com.example.savvy.ui.tambah.TambahTransaksiViewModel
 import com.example.savvy.ui.riwayat.CategoryDetailScreen
 import androidx.navigation.NavType
-import androidx.navigation.navArgument
 import com.example.savvy.data.Screen
 import com.example.savvy.ui.riwayat.DetailTransaksiScreen
-
 
 @Composable
 fun AppNavHost(
@@ -44,14 +43,24 @@ fun AppNavHost(
                 }
             )
         }
-        composable(Screen.Onboarding.route) {
+        composable(
+            route = "${Screen.Onboarding.route}?initialPage={initialPage}",
+            arguments = listOf(
+                navArgument("initialPage") {
+                    type = NavType.IntType
+                    defaultValue = 0
+                }
+            )
+        ) { backStackEntry ->
+            val initialPage = backStackEntry.arguments?.getInt("initialPage") ?: 0
             OnboardingScreen(
                 onNavigateToRegister = {
                     navController.navigate(Screen.Register.route)
                 },
                 onNavigateToLogin = {
                     navController.navigate(Screen.Login.route)
-                }
+                },
+                initialPage = initialPage
             )
         }
         composable(Screen.Register.route) {
@@ -102,7 +111,7 @@ fun AppNavHost(
             TambahTransaksiScreen(
                 navController = navController,
                 uploader = viewModel.uploader,
-                transactionId = transactionId // Kirim transactionId untuk mode edit
+                transactionId = transactionId
             )
         }
     }

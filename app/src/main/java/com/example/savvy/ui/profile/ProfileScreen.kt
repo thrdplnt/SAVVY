@@ -232,7 +232,7 @@ fun ProfileScreen(
 
         LaunchedEffect(hasLoggedOut) {
             if (hasLoggedOut) {
-                navController.navigate(Screen.Onboarding.route) {
+                navController.navigate("${Screen.Onboarding.route}?initialPage=3") {
                     popUpTo(0) { inclusive = true }
                 }
             }

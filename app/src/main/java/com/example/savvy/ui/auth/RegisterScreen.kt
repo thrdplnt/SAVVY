@@ -1,5 +1,6 @@
 package com.example.savvy.ui.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
@@ -19,6 +21,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.savvy.R
 import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.components.SavvyTextField
 import com.example.savvy.data.Screen
@@ -44,6 +47,7 @@ fun RegisterScreen(
             .fillMaxSize()
             .background(Beige) // Beige
     ) {
+        // Tombol panah kembali (kiri atas)
         IconButton(
             onClick = { navController.popBackStack() },
             modifier = Modifier
@@ -55,6 +59,16 @@ fun RegisterScreen(
                 tint = Navy // Navy
             )
         }
+
+        // Logo Savvy (kanan atas)
+        Image(
+            painter = painterResource(id = R.drawable.logo_savvy_small), // Logo kecil
+            contentDescription = "Savvy Logo",
+            modifier = Modifier
+                .absoluteOffset(x = (-42).dp, y = 42.dp) // Posisi absolut: x dari kanan, y = 42 dp
+                .size(120.dp, 40.dp)
+                .align(Alignment.TopEnd)
+        )
 
         Column(
             modifier = Modifier

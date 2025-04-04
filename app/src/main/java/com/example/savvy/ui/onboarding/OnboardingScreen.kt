@@ -24,7 +24,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.savvy.R
-import com.example.savvy.ui.components.SavvyButton // Tambahkan impor ini
+import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -100,9 +100,10 @@ fun OnboardingSlide(
 @Composable
 fun OnboardingScreen(
     onNavigateToRegister: () -> Unit,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    initialPage: Int = 0 // Parameter baru untuk halaman awal
 ) {
-    val pagerState = rememberPagerState(pageCount = { 4 })
+    val pagerState = rememberPagerState(pageCount = { 4 }, initialPage = initialPage)
     val coroutineScope = rememberCoroutineScope()
 
     // Data untuk masing-masing slide
