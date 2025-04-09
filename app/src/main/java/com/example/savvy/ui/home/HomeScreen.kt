@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -44,6 +45,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.Image
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
 @Composable
 fun HomeScreen(
@@ -73,6 +78,10 @@ fun HomeScreen(
     // State untuk pencarian
     var searchQuery by remember { mutableStateOf("") }
     val filteredTransactions = remember { mutableStateListOf<Map<String, Any>>() }
+
+    // State untuk kategori yang dipilih di pie chart
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var selectedPercentage by remember { mutableStateOf<Float?>(null) }
 
     // Warna untuk pie chart
     val categoryColors = mapOf(
@@ -493,10 +502,63 @@ fun HomeScreen(
                                 .padding(16.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Canvas(modifier = Modifier.size(150.dp)) {
+                            // Pie Chart
+                            Canvas(
+                                modifier = Modifier
+                                    .size(150.dp)
+                                    .pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                if (event.type == PointerEventType.Press) {
+                                                    val offset = event.changes.first().position
+                                                    // Hitung posisi klik relatif terhadap pusat pie chart
+                                                    val centerX = size.width / 2f
+                                                    val centerY = size.height / 2f
+                                                    val dx = offset.x - centerX
+                                                    val dy = offset.y - centerY
+
+                                                    // Hitung jarak dari pusat untuk memastikan klik berada di dalam pie chart
+                                                    val distance = sqrt(dx * dx + dy * dy)
+                                                    val radius = size.width / 2f
+                                                    val innerRadius = radius - 40f // Lebar stroke adalah 80f, jadi inner radius = radius - (stroke/2)
+
+                                                    if (distance in innerRadius..radius) {
+                                                        // Hitung sudut dari posisi klik
+                                                        var angle = atan2(dy, dx) * 180 / Math.PI
+                                                        if (angle < 0) angle += 360
+
+                                                        // Tentukan segmen yang diklik berdasarkan sudut
+                                                        var startAngle = 0f
+                                                        var selected: String? = null
+                                                        var percentage: Float? = null
+
+                                                        categoryData.forEach { (category, data) ->
+                                                            val sweepAngle = (data.second.toFloat() / totalPengeluaran.toFloat()) * 360f
+                                                            if (angle >= startAngle && angle < startAngle + sweepAngle) {
+                                                                selected = category
+                                                                percentage = (data.second.toFloat() / totalPengeluaran.toFloat()) * 100f
+                                                            }
+                                                            startAngle += sweepAngle
+                                                        }
+
+                                                        selectedCategory = selected
+                                                        selectedPercentage = percentage
+                                                    } else {
+                                                        // Jika klik di luar area pie chart, hapus informasi
+                                                        selectedCategory = null
+                                                        selectedPercentage = null
+                                                    }
+                                                    event.changes.forEach { it.consume() }
+                                                }
+                                            }
+                                        }
+                                    }
+                            ) {
                                 var startAngle = 0f
                                 categoryData.forEach { (category, data) ->
                                     val sweepAngle = (data.second.toFloat() / totalPengeluaran.toFloat()) * 360f
+                                    val isSelected = category == selectedCategory
                                     drawArc(
                                         color = categoryColors[category] ?: Color.Gray,
                                         startAngle = startAngle,
@@ -504,9 +566,40 @@ fun HomeScreen(
                                         useCenter = false,
                                         topLeft = Offset(0f, 0f),
                                         size = Size(size.width, size.height),
-                                        style = Stroke(width = 80f)
+                                        style = Stroke(width = if (isSelected) 100f else 80f) // Segmen yang dipilih lebih tebal
                                     )
                                     startAngle += sweepAngle
+                                }
+                            }
+
+                            // Tampilkan detail di tengah pie chart
+                            Column(
+                                modifier = Modifier
+                                    .width(100.dp), // Batasi lebar teks agar tidak terlalu lelet
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (selectedCategory != null && selectedPercentage != null) {
+                                    Text(
+                                        text = selectedCategory!!,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Navy,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Text(
+                                        text = "${String.format("%.1f", selectedPercentage)}%",
+                                        fontSize = 12.sp,
+                                        color = Navy,
+                                        textAlign = TextAlign.Center
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Ketuk untuk\nmelihat detail",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 16.sp // Jarak antar baris
+                                    )
                                 }
                             }
                         }
@@ -553,14 +646,6 @@ fun HomeScreen(
                                 totalPengeluaran = totalPengeluaran,
                                 navController = navController
                             )
-//                            // Tambahkan garis pemisah kecuali untuk item terakhir
-//                            if (index < categoryData.size - 1) {
-//                                Spacer(modifier = Modifier.height(8.dp))
-//                                Divider(
-//                                    color = Color.Gray.copy(alpha = 0.2f),
-//                                    thickness = 1.dp
-//                                )
-//                            }
                         }
                     }
                 }
