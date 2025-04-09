@@ -26,7 +26,8 @@ import com.example.savvy.ui.riwayat.DetailTransaksiScreen
 @Composable
 fun AppNavHost(
     navController: NavHostController,
-    startDestination: String
+    startDestination: String,
+    onClearSearch: ClearSearchCallback = {}
 ) {
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Screen.Splash.route) {
@@ -70,7 +71,7 @@ fun AppNavHost(
             LoginScreen(navController = navController)
         }
         composable(Screen.Home.route) {
-            HomeScreen(navController = navController)
+            HomeScreen(navController = navController, onClearSearch = onClearSearch)
         }
         composable(Screen.Riwayat.route) {
             RiwayatScreen(navController = navController)
@@ -101,11 +102,17 @@ fun AppNavHost(
         composable(Screen.ForgotPassword.route) {
             UbahKataSandi(navController = navController)
         }
-        composable(Screen.DetailTransaksi.route) { backStackEntry ->
+        composable(
+            route = Screen.DetailTransaksi.route,
+            arguments = listOf(navArgument("transactionId") { type = NavType.StringType })
+        ) { backStackEntry ->
             val transactionId = backStackEntry.arguments?.getString("transactionId") ?: ""
             DetailTransaksiScreen(navController = navController, transactionId = transactionId)
         }
-        composable(Screen.EditTransaksi.route) { backStackEntry ->
+        composable(
+            route = Screen.EditTransaksi.route,
+            arguments = listOf(navArgument("transactionId") { type = NavType.StringType })
+        ) { backStackEntry ->
             val transactionId = backStackEntry.arguments?.getString("transactionId") ?: ""
             val viewModel: TambahTransaksiViewModel = hiltViewModel()
             TambahTransaksiScreen(

@@ -1,5 +1,6 @@
 package com.example.savvy.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,7 +53,8 @@ import kotlin.math.sqrt
 
 @Composable
 fun HomeScreen(
-    navController: NavController
+    navController: NavController,
+    onClearSearch: () -> Unit = {} // Callback untuk mengosongkan pencarian dari navbar
 ) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
@@ -78,6 +80,7 @@ fun HomeScreen(
     // State untuk pencarian
     var searchQuery by remember { mutableStateOf("") }
     val filteredTransactions = remember { mutableStateListOf<Map<String, Any>>() }
+    var hasSearched by remember { mutableStateOf(false) } // State untuk melacak apakah pencarian sudah dilakukan
 
     // State untuk kategori yang dipilih di pie chart
     var selectedCategory by remember { mutableStateOf<String?>(null) }
@@ -191,10 +194,24 @@ fun HomeScreen(
                     filteredTransactions.add(transaction)
                 }
             }
+            hasSearched = true // Tandai bahwa pencarian sudah dilakukan
             keyboardController?.hide() // Sembunyikan keyboard
         } else {
             filteredTransactions.clear()
+            hasSearched = false
         }
+    }
+
+    // Fungsi untuk mengosongkan hasil pencarian
+    fun clearSearch() {
+        filteredTransactions.clear()
+        searchQuery = ""
+        hasSearched = false
+    }
+
+    // Tangani tombol back perangkat
+    BackHandler(enabled = hasSearched) {
+        clearSearch() // Kosongkan hasil pencarian saat tombol back ditekan
     }
 
     // Dialog untuk menampilkan semua dompet
@@ -286,78 +303,111 @@ fun HomeScreen(
             )
         )
 
-        // Tampilkan hasil pencarian jika ada
-        if (filteredTransactions.isNotEmpty()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
+        // Tampilkan hasil pencarian atau pesan jika tidak ditemukan
+        if (hasSearched) {
+            if (filteredTransactions.isNotEmpty()) {
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
-                    Text(
-                        text = "Hasil Pencarian",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Navy,
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                    )
-
-                    filteredTransactions.forEach { transaction ->
-                        val amount = transaction["amount"] as? Long ?: 0L
-                        val category = transaction["category"] as? String ?: "Unknown"
-                        val date = transaction["date"]
-                        val dateString = if (date is Date) {
-                            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(date)
-                        } else {
-                            "Unknown Date"
-                        }
-                        val note = transaction["note"] as? String ?: "No note"
-
-                        Row(
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Hasil Pencarian",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Navy,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
+                                .padding(bottom = 8.dp)
+                        )
+
+                        filteredTransactions.forEach { transaction ->
+                            val amount = transaction["amount"] as? Long ?: 0L
+                            val category = transaction["category"] as? String ?: "Unknown"
+                            val date = transaction["date"]
+                            val dateString = if (date is Date) {
+                                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(date)
+                            } else {
+                                "Unknown Date"
+                            }
+                            val note = transaction["note"] as? String ?: "No note"
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = category,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Navy
+                                    )
+                                    Text(
+                                        text = "Tanggal: $dateString",
+                                        fontSize = 14.sp,
+                                        color = Color.Gray
+                                    )
+                                    Text(
+                                        text = "Catatan: $note",
+                                        fontSize = 14.sp,
+                                        color = Color.Gray
+                                    )
+                                }
                                 Text(
-                                    text = category,
+                                    text = "-Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Navy
                                 )
-                                Text(
-                                    text = "Tanggal: $dateString",
-                                    fontSize = 14.sp,
-                                    color = Color.Gray
-                                )
-                                Text(
-                                    text = "Catatan: $note",
-                                    fontSize = 14.sp,
-                                    color = Color.Gray
-                                )
                             }
-                            Text(
-                                text = "-Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Navy
-                            )
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            } else {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Hasil Pencarian Tidak Ditemukan",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Navy,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = "Coba gunakan kata kunci lain.",
+                            fontSize = 14.sp,
+                            color = Color.Gray
+                        )
                     }
                 }
             }

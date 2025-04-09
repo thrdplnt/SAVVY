@@ -1,6 +1,7 @@
 package com.example.savvy.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -34,8 +35,13 @@ import com.example.savvy.ui.theme.Beige
 import androidx.compose.ui.draw.shadow
 import kotlinx.coroutines.delay
 
+// Callback untuk mengosongkan pencarian di HomeScreen
+typealias ClearSearchCallback = () -> Unit
+
 @Composable
-fun NavigationGraph() {
+fun NavigationGraph(
+    onClearSearch: ClearSearchCallback = {} // Callback untuk mengosongkan pencarian
+) {
     val navController = rememberNavController()
     val bottomItems = listOf(
         Screen.Home to Icons.Default.Home,
@@ -113,21 +119,27 @@ fun NavigationGraph() {
 
                         NavigationBarItem(
                             selected = isSelected,
-                            onClick = {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            onClick = { /* Kosongkan onClick di sini, kita gunakan Modifier.clickable */ },
                             icon = {
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = screen.route,
-                                    tint = iconColor
-                                    // Tidak menggunakan Modifier.size(), biarkan ukuran default
+                                    tint = iconColor,
+                                    modifier = Modifier
+                                        .clickable {
+                                            // Jika tombol "Home" diklik, kosongkan hasil pencarian
+                                            if (screen.route == Screen.Home.route) {
+                                                onClearSearch()
+                                            }
+                                            // Navigasi ke rute yang dipilih
+                                            navController.navigate(screen.route) {
+                                                popUpTo(navController.graph.startDestinationId) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
                                 )
                             },
                             label = {
@@ -142,7 +154,22 @@ fun NavigationGraph() {
                                     },
                                     color = textColor,
                                     fontSize = 12.sp, // Ukuran teks lebih kecil
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier
+                                        .clickable {
+                                            // Jika tombol "Home" diklik, kosongkan hasil pencarian
+                                            if (screen.route == Screen.Home.route) {
+                                                onClearSearch()
+                                            }
+                                            // Navigasi ke rute yang dipilih
+                                            navController.navigate(screen.route) {
+                                                popUpTo(navController.graph.startDestinationId) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
@@ -159,7 +186,11 @@ fun NavigationGraph() {
         }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            AppNavHost(navController = navController, startDestination = Screen.Splash.route)
+            AppNavHost(
+                navController = navController,
+                startDestination = Screen.Splash.route,
+                onClearSearch = onClearSearch // Teruskan callback ke AppNavHost
+            )
         }
     }
 }
