@@ -13,7 +13,7 @@ import com.example.savvy.ui.home.HomeScreen
 import com.example.savvy.ui.onboarding.OnboardingScreen
 import com.example.savvy.ui.profile.EditProfileScreen
 import com.example.savvy.ui.profile.ProfileScreen
-import com.example.savvy.ui.profile.ForgotPasswordScreen
+import com.example.savvy.ui.profile.UbahKataSandi
 import com.example.savvy.ui.riwayat.RiwayatScreen
 import com.example.savvy.ui.splash.SplashScreen
 import com.example.savvy.ui.tambah.TambahTransaksiScreen
@@ -99,7 +99,7 @@ fun AppNavHost(
             CategoryDetailScreen(navController = navController, category = category)
         }
         composable(Screen.ForgotPassword.route) {
-            ForgotPasswordScreen(navController = navController)
+            UbahKataSandi(navController = navController)
         }
         composable(Screen.DetailTransaksi.route) { backStackEntry ->
             val transactionId = backStackEntry.arguments?.getString("transactionId") ?: ""
