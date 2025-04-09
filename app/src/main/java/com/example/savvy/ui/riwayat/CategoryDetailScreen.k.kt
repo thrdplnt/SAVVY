@@ -64,8 +64,9 @@ fun CategoryDetailScreen(
                         .padding(vertical = 4.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFE6F0FA)
-                    )
+                        containerColor = Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp)
