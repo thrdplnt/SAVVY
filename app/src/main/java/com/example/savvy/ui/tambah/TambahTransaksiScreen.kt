@@ -31,10 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import com.example.savvy.data.Screen
-import com.example.savvy.data.SupabaseStorageUploader
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.components.SavvyDropdownMenu
 import com.example.savvy.ui.components.SavvyTextField
@@ -43,7 +43,10 @@ import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -59,7 +62,7 @@ fun isNetworkAvailable(context: Context): Boolean {
 @Composable
 fun TambahTransaksiScreen(
     navController: NavController,
-    uploader: SupabaseStorageUploader,
+    viewModel: TambahTransaksiViewModel = hiltViewModel(),
     transactionId: String? = null
 ) {
     val context = LocalContext.current
@@ -79,8 +82,9 @@ fun TambahTransaksiScreen(
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var existingImageUrl by remember { mutableStateOf<String?>(null) }
     var isEditMode by remember { mutableStateOf(transactionId != null) }
-    var showPhotoOptionsDialog by remember { mutableStateOf(false) } // State untuk dialog opsi foto
-    var isImageRemoved by remember { mutableStateOf(false) } // State untuk melacak apakah gambar dihapus
+    var showPhotoOptionsDialog by remember { mutableStateOf(false) }
+    var isImageRemoved by remember { mutableStateOf(false) }
+    var localTransactionId by remember { mutableStateOf<Long?>(null) } // Untuk menyimpan ID transaksi lokal
 
     // Opsi untuk dropdown
     val transactionKinds = listOf("Pemasukan", "Pengeluaran")
@@ -182,54 +186,6 @@ fun TambahTransaksiScreen(
             takePictureLauncher.launch(photoUri)
         } else {
             Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    // Fungsi untuk menyimpan atau memperbarui transaksi
-    fun saveTransaction(imageUrl: String?) {
-        val transaction = Transaction(
-            type = type,
-            amount = amount.toLong(),
-            category = category,
-            note = note,
-            date = date,
-            userId = auth.currentUser!!.uid,
-            imageUrl = imageUrl
-        )
-
-        if (isEditMode) {
-            transactionId?.let { id ->
-                db.collection("transactions")
-                    .document(id)
-                    .set(transaction)
-                    .addOnSuccessListener {
-                        isLoading = false
-                        Toast.makeText(context, "Transaksi berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                        navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
-                        navController.popBackStack()
-                    }
-                    .addOnFailureListener { e ->
-                        isLoading = false
-                        Toast.makeText(context, "Gagal memperbarui transaksi: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
-            }
-        } else {
-            db.collection("transactions")
-                .add(transaction)
-                .addOnSuccessListener {
-                    isLoading = false
-                    Toast.makeText(context, "Tambah Transaksi Sukses Dibuat", Toast.LENGTH_SHORT).show()
-                    navController.navigate(
-                        Screen.Riwayat.route,
-                        navOptions = NavOptions.Builder()
-                            .setPopUpTo(Screen.Tambah.route, inclusive = true)
-                            .build()
-                    )
-                }
-                .addOnFailureListener { e ->
-                    isLoading = false
-                    Toast.makeText(context, "Gagal menambahkan transaksi: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
         }
     }
 
@@ -419,6 +375,7 @@ fun TambahTransaksiScreen(
         // Tombol Save
         Button(
             onClick = {
+                // Validasi input
                 if (transactionKind.isEmpty() || type.isEmpty() || amount.isEmpty() || category.isEmpty() || date == null) {
                     Toast.makeText(context, "Harap isi semua kolom wajib", Toast.LENGTH_SHORT).show()
                     return@Button
@@ -437,45 +394,130 @@ fun TambahTransaksiScreen(
                     return@Button
                 }
 
-                if (!isNetworkAvailable(context)) {
-                    Toast.makeText(context, "Tidak ada koneksi internet", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-
                 isLoading = true
 
-                if (isImageRemoved) {
-                    saveTransaction(null)
-                } else if (imageUri != null) {
-                    coroutineScope.launch {
-                        try {
-                            val inputStream = context.contentResolver.openInputStream(imageUri!!)
-                            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                            inputStream?.close()
+                coroutineScope.launch {
+                    if (isEditMode) {
+                        if (isNetworkAvailable(context)) {
+                            // Jika online, simpan langsung ke Firestore
+                            val transaction = Transaction(
+                                type = type,
+                                amount = amountLong,
+                                category = category,
+                                note = note,
+                                date = date!!,
+                                userId = user.uid,
+                                imageUrl = if (isImageRemoved) null else existingImageUrl
+                            )
 
-                            val byteArrayOutputStream = java.io.ByteArrayOutputStream()
-                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 50, byteArrayOutputStream)
-                            val compressedByteArray = byteArrayOutputStream.toByteArray()
+                            transactionId?.let { id ->
+                                try {
+                                    // Simpan transaksi ke Firestore menggunakan await()
+                                    db.collection("transactions")
+                                        .document(id)
+                                        .set(transaction)
+                                        .await()
 
-                            val file = File(context.cacheDir, "temp_image.jpg")
-                            file.writeBytes(compressedByteArray)
+                                    // Jika ada imageUri, unggah gambar dan perbarui dokumen
+                                    if (imageUri != null && !isImageRemoved) {
+                                        try {
+                                            val inputStream = context.contentResolver.openInputStream(imageUri!!)
+                                            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                                            inputStream?.close()
 
-                            val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
-                            val imageUrl = uploader.uploadImage(file, destinationFileName)
+                                            val byteArrayOutputStream = java.io.ByteArrayOutputStream()
+                                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 50, byteArrayOutputStream)
+                                            val compressedByteArray = byteArrayOutputStream.toByteArray()
 
-                            if (imageUrl != null) {
-                                saveTransaction(imageUrl)
-                            } else {
-                                isLoading = false
-                                Toast.makeText(context, "Gagal mengunggah gambar ke Supabase", Toast.LENGTH_LONG).show()
+                                            val file = File(context.cacheDir, "temp_image.jpg")
+                                            file.writeBytes(compressedByteArray)
+
+                                            val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
+                                            // Panggil uploadImage di dalam coroutine dengan withContext
+                                            val imageUrl = withContext(Dispatchers.IO) {
+                                                viewModel.uploader.uploadImage(file, destinationFileName)
+                                            }
+
+                                            if (imageUrl != null) {
+                                                // Perbarui dokumen Firestore dengan imageUrl
+                                                db.collection("transactions")
+                                                    .document(id)
+                                                    .update("imageUrl", imageUrl)
+                                                    .await()
+
+                                                isLoading = false
+                                                Toast.makeText(context, "Transaksi berhasil diperbarui", Toast.LENGTH_SHORT).show()
+                                                navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
+                                                navController.popBackStack()
+                                            } else {
+                                                isLoading = false
+                                                Toast.makeText(context, "Gagal mengunggah gambar ke Supabase", Toast.LENGTH_LONG).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            isLoading = false
+                                            Toast.makeText(context, "Gagal mengunggah gambar: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    } else {
+                                        isLoading = false
+                                        Toast.makeText(context, "Transaksi berhasil diperbarui", Toast.LENGTH_SHORT).show()
+                                        navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
+                                        navController.popBackStack()
+                                    }
+                                } catch (e: Exception) {
+                                    isLoading = false
+                                    Toast.makeText(context, "Gagal memperbarui transaksi: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
                             }
-                        } catch (e: Exception) {
-                            isLoading = false
-                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        } else {
+                            // Jika offline, perbarui di Room
+                            localTransactionId?.let { id ->
+                                viewModel.updateTransactionLocally(
+                                    transactionId = id,
+                                    type = type,
+                                    amount = amountLong,
+                                    category = category,
+                                    note = note,
+                                    date = date!!,
+                                    userId = user.uid,
+                                    imageUri = if (isImageRemoved) null else imageUri
+                                )
+                                isLoading = false
+                                Toast.makeText(
+                                    context,
+                                    "Transaksi disimpan secara lokal dan akan disinkronkan saat online",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
+                                navController.popBackStack()
+                            }
                         }
+                    } else {
+                        // Simpan ke Room terlebih dahulu
+                        val newLocalTransactionId = viewModel.saveTransactionLocally(
+                            type = type,
+                            amount = amountLong,
+                            category = category,
+                            note = note,
+                            date = date!!,
+                            userId = user.uid,
+                            imageUri = if (isImageRemoved) null else imageUri
+                        )
+                        localTransactionId = newLocalTransactionId
+
+                        isLoading = false
+                        val message = if (isNetworkAvailable(context)) {
+                            "Tambah Transaksi Sukses Dibuat"
+                        } else {
+                            "Transaksi disimpan secara lokal dan akan disinkronkan saat online"
+                        }
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        navController.navigate(
+                            Screen.Riwayat.route,
+                            navOptions = NavOptions.Builder()
+                                .setPopUpTo(Screen.Tambah.route, inclusive = true)
+                                .build()
+                        )
                     }
-                } else {
-                    saveTransaction(existingImageUrl)
                 }
             },
             modifier = Modifier
@@ -572,7 +614,7 @@ fun TambahTransaksiScreen(
                             isImageRemoved = true
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = imageUri != null || existingImageUrl != null // Hanya aktif jika ada gambar
+                        enabled = imageUri != null || existingImageUrl != null
                     ) {
                         Text(
                             text = "Hapus",

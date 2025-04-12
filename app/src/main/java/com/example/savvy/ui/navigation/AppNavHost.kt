@@ -80,7 +80,7 @@ fun AppNavHost(
             val viewModel: TambahTransaksiViewModel = hiltViewModel()
             TambahTransaksiScreen(
                 navController = navController,
-                uploader = viewModel.uploader
+                viewModel = viewModel // Kirim viewModel jika diperlukan, atau biarkan default
             )
         }
         composable(Screen.Anggaran.route) {
@@ -117,7 +117,7 @@ fun AppNavHost(
             val viewModel: TambahTransaksiViewModel = hiltViewModel()
             TambahTransaksiScreen(
                 navController = navController,
-                uploader = viewModel.uploader,
+                viewModel = viewModel, // Kirim viewModel jika diperlukan, atau biarkan default
                 transactionId = transactionId
             )
         }
