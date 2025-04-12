@@ -33,7 +33,6 @@ import com.example.savvy.data.Screen
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.Beige
 import androidx.compose.ui.draw.shadow
-import kotlinx.coroutines.delay
 
 // Callback untuk mengosongkan pencarian di HomeScreen
 typealias ClearSearchCallback = () -> Unit
@@ -58,34 +57,13 @@ fun NavigationGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Gunakan LaunchedEffect untuk menandai bahwa splash screen selesai setelah durasi minimum
-    LaunchedEffect(Unit) {
-        // Tambahkan penundaan minimum untuk memastikan splash screen selesai
-        delay(2000L) // Tunggu 2 detik (sesuaikan dengan durasi splash screen Anda)
+    // Ekstrak bagian utama dari currentRoute (tanpa query parameter)
+    val baseRoute = currentRoute?.substringBefore("?") ?: currentRoute
 
-        // Setelah penundaan, periksa rute saat ini
-        if (currentRoute !in listOf(
-                Screen.Splash.route,
-                Screen.Onboarding.route,
-                Screen.Register.route,
-                Screen.Login.route,
-                Screen.EditProfile.route
-            )
-        ) {
-            isSplashFinished = true
-        }
-    }
-
-    // Pantau perubahan rute untuk memastikan isSplashFinished diatur dengan benar
-    LaunchedEffect(currentRoute) {
-        if (currentRoute !in listOf(
-                Screen.Splash.route,
-                Screen.Onboarding.route,
-                Screen.Register.route,
-                Screen.Login.route,
-                Screen.EditProfile.route
-            )
-        ) {
+    // Pantau perubahan rute untuk menentukan kapan splash screen selesai
+    LaunchedEffect(baseRoute) {
+        // Jika rute saat ini bukan SplashScreen, tandai splash screen sebagai selesai
+        if (baseRoute != Screen.Splash.route) {
             isSplashFinished = true
         }
     }
@@ -93,7 +71,7 @@ fun NavigationGraph(
     Scaffold(
         bottomBar = {
             // Tampilkan navbar hanya jika splash screen sudah selesai dan rute saat ini bukan layar yang dikecualikan
-            if (isSplashFinished && currentRoute != null && currentRoute !in listOf(
+            if (isSplashFinished && baseRoute != null && baseRoute !in listOf(
                     Screen.Splash.route,
                     Screen.Onboarding.route,
                     Screen.Register.route,
@@ -106,7 +84,7 @@ fun NavigationGraph(
                     tonalElevation = 0.dp // Hapus bayangan default
                 ) {
                     bottomItems.forEach { (screen, icon) ->
-                        val isSelected = currentRoute == screen.route
+                        val isSelected = baseRoute == screen.route
                         // Animasi warna untuk ikon dan teks
                         val iconColor by animateColorAsState(
                             targetValue = if (isSelected) Navy else Color.Gray,
