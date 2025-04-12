@@ -1,6 +1,11 @@
 package com.example.savvy.ui.tambah
 
+import android.Manifest
 import android.app.DatePickerDialog
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -15,33 +20,33 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
+import com.example.savvy.data.Screen
 import com.example.savvy.data.SupabaseStorageUploader
+import com.example.savvy.data.Transaction
 import com.example.savvy.ui.components.SavvyDropdownMenu
 import com.example.savvy.ui.components.SavvyTextField
-import com.example.savvy.data.Screen
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
-import com.example.savvy.data.Transaction
+import com.example.savvy.ui.theme.White
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.geometry.CornerRadius
 
 // Fungsi untuk memeriksa koneksi internet
 fun isNetworkAvailable(context: Context): Boolean {
@@ -54,8 +59,8 @@ fun isNetworkAvailable(context: Context): Boolean {
 @Composable
 fun TambahTransaksiScreen(
     navController: NavController,
-    uploader: SupabaseStorageUploader, // Inject uploader
-    transactionId: String? = null // Parameter untuk mode edit
+    uploader: SupabaseStorageUploader,
+    transactionId: String? = null
 ) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
@@ -63,7 +68,7 @@ fun TambahTransaksiScreen(
     val coroutineScope = rememberCoroutineScope()
 
     // State untuk input form
-    var transactionKind by remember { mutableStateOf("") } // Pemasukan atau Pengeluaran
+    var transactionKind by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("Tunai") }
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
@@ -71,9 +76,11 @@ fun TambahTransaksiScreen(
     var dateText by remember { mutableStateOf("") }
     var date by remember { mutableStateOf<Date?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-    var imageUri by remember { mutableStateOf<Uri?>(null) } // State untuk menyimpan URI gambar
-    var existingImageUrl by remember { mutableStateOf<String?>(null) } // State untuk menyimpan URL gambar yang sudah ada
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var existingImageUrl by remember { mutableStateOf<String?>(null) }
     var isEditMode by remember { mutableStateOf(transactionId != null) }
+    var showPhotoOptionsDialog by remember { mutableStateOf(false) } // State untuk dialog opsi foto
+    var isImageRemoved by remember { mutableStateOf(false) } // State untuk melacak apakah gambar dihapus
 
     // Opsi untuk dropdown
     val transactionKinds = listOf("Pemasukan", "Pengeluaran")
@@ -138,9 +145,45 @@ fun TambahTransaksiScreen(
     ) { uri ->
         uri?.let {
             imageUri = it
+            isImageRemoved = false
         }
     }
 
+    // Launcher untuk mengambil foto dari kamera
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            imageUri?.let {
+                isImageRemoved = false
+            }
+        }
+    }
+
+    // Launcher untuk meminta izin kamera
+    val requestCameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val photoFile = File(context.cacheDir, "temp_camera_image.jpg")
+            val photoUri = FileProvider.getUriForFile(
+                context,
+                "com.example.savvy.fileprovider",
+                photoFile
+            )
+            imageUri = photoUri
+
+            context.grantUriPermission(
+                "com.android.camera",
+                photoUri,
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+
+            takePictureLauncher.launch(photoUri)
+        } else {
+            Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Fungsi untuk menyimpan atau memperbarui transaksi
     fun saveTransaction(imageUrl: String?) {
@@ -155,7 +198,6 @@ fun TambahTransaksiScreen(
         )
 
         if (isEditMode) {
-            // Mode edit: perbarui transaksi yang ada
             transactionId?.let { id ->
                 db.collection("transactions")
                     .document(id)
@@ -164,7 +206,7 @@ fun TambahTransaksiScreen(
                         isLoading = false
                         Toast.makeText(context, "Transaksi berhasil diperbarui", Toast.LENGTH_SHORT).show()
                         navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
-                        navController.popBackStack() // Kembali ke DetailTransaksiScreen
+                        navController.popBackStack()
                     }
                     .addOnFailureListener { e ->
                         isLoading = false
@@ -172,10 +214,9 @@ fun TambahTransaksiScreen(
                     }
             }
         } else {
-            // Mode tambah: buat transaksi baru
             db.collection("transactions")
                 .add(transaction)
-                .addOnSuccessListener { documentReference ->
+                .addOnSuccessListener {
                     isLoading = false
                     Toast.makeText(context, "Tambah Transaksi Sukses Dibuat", Toast.LENGTH_SHORT).show()
                     navController.navigate(
@@ -207,10 +248,9 @@ fun TambahTransaksiScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (isEditMode) {
-                // Tombol "X" di kiri atas saat mode edit
                 IconButton(
                     onClick = { navController.popBackStack() },
-                    modifier = Modifier.padding(start = 0.dp) // Margin sama dengan TextField di bawah
+                    modifier = Modifier.padding(start = 0.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
@@ -218,8 +258,6 @@ fun TambahTransaksiScreen(
                         tint = Navy
                     )
                 }
-
-                // Teks "Edit Transaksi" di sebelah kanan tombol "X"
                 Text(
                     text = "Edit Transaksi",
                     fontSize = 24.sp,
@@ -227,7 +265,6 @@ fun TambahTransaksiScreen(
                     color = Navy
                 )
             } else {
-                // Judul "Tambah Transaksi" di tengah saat bukan mode edit
                 Text(
                     text = "Tambah Transaksi",
                     fontSize = 24.sp,
@@ -339,12 +376,10 @@ fun TambahTransaksiScreen(
 
         // Tombol Tambahkan Gambar
         Button(
-            onClick = {
-                pickImageLauncher.launch("image/*")
-            },
+            onClick = { showPhotoOptionsDialog = true },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp) // Perbesar tinggi tombol
+                .height(56.dp)
                 .drawBehind {
                     val strokeWidth = 1.dp.toPx()
                     val cornerRadius = 8.dp.toPx()
@@ -361,15 +396,19 @@ fun TambahTransaksiScreen(
                 },
             shape = RoundedCornerShape(2.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Transparent, // Background transparan
+                containerColor = Color.Transparent,
                 contentColor = Navy
             ),
             elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 0.dp // Hilangkan shadow
+                defaultElevation = 0.dp
             )
         ) {
             Text(
-                text = if (imageUri != null) "Gambar Dipilih" else if (existingImageUrl != null) "Gambar Sudah Ada" else "Tambahkan Gambar",
+                text = when {
+                    imageUri != null -> "Gambar Dipilih"
+                    existingImageUrl != null && !isImageRemoved -> "Gambar Sudah Ada"
+                    else -> "Tambahkan Gambar"
+                },
                 color = Navy,
                 fontSize = 16.sp
             )
@@ -380,7 +419,6 @@ fun TambahTransaksiScreen(
         // Tombol Save
         Button(
             onClick = {
-                // Validasi input
                 if (transactionKind.isEmpty() || type.isEmpty() || amount.isEmpty() || category.isEmpty() || date == null) {
                     Toast.makeText(context, "Harap isi semua kolom wajib", Toast.LENGTH_SHORT).show()
                     return@Button
@@ -399,7 +437,6 @@ fun TambahTransaksiScreen(
                     return@Button
                 }
 
-                // Periksa koneksi internet
                 if (!isNetworkAvailable(context)) {
                     Toast.makeText(context, "Tidak ada koneksi internet", Toast.LENGTH_SHORT).show()
                     return@Button
@@ -407,25 +444,22 @@ fun TambahTransaksiScreen(
 
                 isLoading = true
 
-                // Jika ada gambar yang dipilih, unggah ke Supabase Storage
-                if (imageUri != null) {
+                if (isImageRemoved) {
+                    saveTransaction(null)
+                } else if (imageUri != null) {
                     coroutineScope.launch {
                         try {
-                            // Konversi URI ke File dengan kompresi
                             val inputStream = context.contentResolver.openInputStream(imageUri!!)
                             val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
                             inputStream?.close()
 
-                            // Kompresi gambar
                             val byteArrayOutputStream = java.io.ByteArrayOutputStream()
                             bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 50, byteArrayOutputStream)
                             val compressedByteArray = byteArrayOutputStream.toByteArray()
 
-                            // Simpan ke file sementara
                             val file = File(context.cacheDir, "temp_image.jpg")
                             file.writeBytes(compressedByteArray)
 
-                            // Unggah ke Supabase Storage
                             val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
                             val imageUrl = uploader.uploadImage(file, destinationFileName)
 
@@ -467,5 +501,98 @@ fun TambahTransaksiScreen(
                 )
             }
         }
+    }
+
+    // Dialog untuk opsi foto
+    if (showPhotoOptionsDialog) {
+        AlertDialog(
+            onDismissRequest = { showPhotoOptionsDialog = false },
+            title = {
+                Text(
+                    "Pilih Opsi Gambar",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Navy
+                )
+            },
+            text = {
+                Column {
+                    TextButton(
+                        onClick = {
+                            showPhotoOptionsDialog = false
+                            pickImageLauncher.launch("image/*")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Pilih dari Galeri",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Navy
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            showPhotoOptionsDialog = false
+                            if (ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.CAMERA
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                val photoFile = File(context.cacheDir, "temp_camera_image.jpg")
+                                val photoUri = FileProvider.getUriForFile(
+                                    context,
+                                    "com.example.savvy.fileprovider",
+                                    photoFile
+                                )
+                                imageUri = photoUri
+
+                                context.grantUriPermission(
+                                    "com.android.camera",
+                                    photoUri,
+                                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                )
+
+                                takePictureLauncher.launch(photoUri)
+                            } else {
+                                requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Ambil Foto",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Navy
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            showPhotoOptionsDialog = false
+                            imageUri = null
+                            existingImageUrl = null
+                            isImageRemoved = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = imageUri != null || existingImageUrl != null // Hanya aktif jika ada gambar
+                    ) {
+                        Text(
+                            text = "Hapus",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (imageUri != null || existingImageUrl != null) MaterialTheme.colorScheme.error else Color.Gray
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showPhotoOptionsDialog = false }) {
+                    Text(
+                        text = "Batal",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Navy
+                    )
+                }
+            },
+            containerColor = White
+        )
     }
 }
