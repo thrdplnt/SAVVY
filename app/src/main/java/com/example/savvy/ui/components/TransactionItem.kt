@@ -86,7 +86,9 @@ fun TransactionItem(
             text = "${if (isPemasukan) "+" else "-"}Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isPemasukan) Color.Green else Navy
+//            color = if (isPemasukan) Color.Green else Navy
+            color = Navy
+
         )
     }
 }
