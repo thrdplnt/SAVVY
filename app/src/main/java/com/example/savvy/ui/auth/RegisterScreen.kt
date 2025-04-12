@@ -5,8 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +18,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
@@ -41,11 +46,13 @@ fun RegisterScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) } // State untuk visibilitas password
+    var isConfirmPasswordVisible by remember { mutableStateOf(false) } // State untuk visibilitas konfirmasi password
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Beige) // Beige
+            .background(Beige)
     ) {
         // Tombol panah kembali (kiri atas)
         IconButton(
@@ -56,16 +63,16 @@ fun RegisterScreen(
             Icon(
                 imageVector = Icons.Default.ArrowBack,
                 contentDescription = "Back",
-                tint = Navy // Navy
+                tint = Navy
             )
         }
 
         // Logo Savvy (kanan atas)
         Image(
-            painter = painterResource(id = R.drawable.logo_savvy_small), // Logo kecil
+            painter = painterResource(id = R.drawable.logo_savvy_small),
             contentDescription = "Savvy Logo",
             modifier = Modifier
-                .absoluteOffset(x = (-42).dp, y = 42.dp) // Posisi absolut: x dari kanan, y = 42 dp
+                .absoluteOffset(x = (-42).dp, y = 42.dp)
                 .size(120.dp, 40.dp)
                 .align(Alignment.TopEnd)
         )
@@ -79,8 +86,8 @@ fun RegisterScreen(
         ) {
             Text(
                 text = "SIGN UP",
-                style = MaterialTheme.typography.headlineLarge, // Poppins Bold 24sp
-                color = Navy, // Navy
+                style = MaterialTheme.typography.headlineLarge,
+                color = Navy,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .widthIn(max = 411.dp)
@@ -93,7 +100,7 @@ fun RegisterScreen(
                 modifier = Modifier
                     .widthIn(max = 500.dp)
                     .fillMaxWidth(0.89f)
-                    .background(White, shape = RoundedCornerShape(8.dp)) // White
+                    .background(White, shape = RoundedCornerShape(8.dp))
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -114,22 +121,60 @@ fun RegisterScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SavvyTextField(
+                // Password Field dengan ikon mata
+                OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = "Password",
-                    isPassword = true,
-                    keyboardType = KeyboardType.Password
+                    label = { Text("Password") },
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    shape = RoundedCornerShape(12.dp),
+                    trailingIcon = {
+                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                            Icon(
+                                imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                                tint = Navy
+                            )
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Navy,
+                        unfocusedBorderColor = Navy,
+                        focusedContainerColor = White,
+                        unfocusedContainerColor = White
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SavvyTextField(
+                // Konfirmasi Password Field dengan ikon mata
+                OutlinedTextField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it },
-                    label = "Konfirmasi Password",
-                    isPassword = true,
-                    keyboardType = KeyboardType.Password
+                    label = { Text("Konfirmasi Password") },
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    visualTransformation = if (isConfirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    shape = RoundedCornerShape(12.dp),
+                    trailingIcon = {
+                        IconButton(onClick = { isConfirmPasswordVisible = !isConfirmPasswordVisible }) {
+                            Icon(
+                                imageVector = if (isConfirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (isConfirmPasswordVisible) "Hide confirm password" else "Show confirm password",
+                                tint = Navy
+                            )
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Navy,
+                        unfocusedBorderColor = Navy,
+                        focusedContainerColor = White,
+                        unfocusedContainerColor = White
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -137,8 +182,8 @@ fun RegisterScreen(
                 authState.errorMessage?.let {
                     Text(
                         text = it,
-                        style = MaterialTheme.typography.labelSmall, // Inter Regular 12sp
-                        color = ErrorRed, // Warna error dari MaterialTheme
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ErrorRed,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),
@@ -148,7 +193,7 @@ fun RegisterScreen(
 
                 if (authState.isLoading) {
                     CircularProgressIndicator(
-                        color = Navy, // Navy
+                        color = Navy,
                         modifier = Modifier.padding(8.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -161,7 +206,7 @@ fun RegisterScreen(
                     onClick = {
                         viewModel.register(name, email, password, confirmPassword)
                     },
-                    modifier = Modifier.fillMaxWidth(), // Mengikuti lebar kontainer
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !authState.isLoading
                 )
 
@@ -169,12 +214,12 @@ fun RegisterScreen(
 
                 ClickableText(
                     text = buildAnnotatedString {
-                        withStyle(style = SpanStyle(color = Navy)) { // Navy
+                        withStyle(style = SpanStyle(color = Navy)) {
                             append("Have an account? ")
                         }
                         withStyle(
                             style = SpanStyle(
-                                color = Navy, // Navy
+                                color = Navy,
                                 textDecoration = TextDecoration.Underline
                             )
                         ) {
@@ -190,7 +235,7 @@ fun RegisterScreen(
                         }
                     },
                     modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall.copy( // Inter Regular 12sp
+                    style = MaterialTheme.typography.labelSmall.copy(
                         textAlign = TextAlign.Center
                     )
                 )
