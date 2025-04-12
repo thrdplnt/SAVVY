@@ -1,25 +1,18 @@
 package com.example.savvy
 
 import android.os.Bundle
-import com.example.savvy.ui.navigation.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.savvy.ui.theme.*
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.savvy.ui.navigation.NavigationGraph
 import com.example.savvy.ui.theme.SavvyTheme
+import com.example.savvy.worker.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
-import com.google.firebase.auth.FirebaseAuth
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
+import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -29,12 +22,33 @@ class MainActivity : ComponentActivity() {
         // Mengatur window agar edge-to-edge
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-
-//        enableEdgeToEdge()
         setContent {
             SavvyTheme {
                 NavigationGraph()
             }
         }
+
+        // Jadwalkan sinkronisasi periodik
+        scheduleSyncWorker()
+    }
+
+    private fun scheduleSyncWorker() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val syncWorkRequest = PeriodicWorkRequestBuilder<SyncWorker>(
+            repeatInterval = 15,
+            repeatIntervalTimeUnit = TimeUnit.MINUTES
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this)
+            .enqueueUniquePeriodicWork(
+                "sync_transactions",
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                syncWorkRequest
+            )
     }
 }

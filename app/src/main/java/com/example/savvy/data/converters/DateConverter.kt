@@ -1,9 +1,9 @@
-package com.example.savvy.data.converters
+package com.example.savvy.data
 
 import androidx.room.TypeConverter
 import java.util.Date
 
-class DateConverter {
+class Converters {
     @TypeConverter
     fun fromTimestamp(value: Long?): Date? {
         return value?.let { Date(it) }
