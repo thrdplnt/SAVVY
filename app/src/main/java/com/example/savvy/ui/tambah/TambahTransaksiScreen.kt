@@ -11,7 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
@@ -180,7 +182,8 @@ fun TambahTransaksiScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()), // Added vertical scrolling
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Baris untuk tombol "X" dan judul
@@ -475,6 +478,9 @@ fun TambahTransaksiScreen(
                 )
             }
         }
+
+        // Spacer to ensure content isn't clipped by bottom navigation or keyboard
+        Spacer(modifier = Modifier.height(80.dp))
     }
 
     // Dialog untuk opsi foto
