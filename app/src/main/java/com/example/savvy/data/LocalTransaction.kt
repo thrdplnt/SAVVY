@@ -6,14 +6,15 @@ import java.util.Date
 
 @Entity(tableName = "local_transactions")
 data class LocalTransaction(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val userId: String,
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
     val type: String,
     val amount: Long,
     val category: String,
     val note: String,
     val date: Date,
-    val imageUri: String? = null,
+    val userId: String,
     val imageUrl: String? = null,
-    val isSynced: Boolean = false
+    val imageUri: String? = null, // Simpan imageUri sebagai String
+    val isSynced: Boolean = false // Status sinkronisasi
 )
