@@ -76,7 +76,11 @@ fun NavigationGraph(
                     Screen.Onboarding.route,
                     Screen.Register.route,
                     Screen.Login.route,
-                    Screen.EditProfile.route
+                    Screen.EditProfile.route,
+                    Screen.DetailTransaksi.route, // Tambahkan DetailTransaksi
+                    Screen.CategoryDetail.route, // Tambahkan CategoryDetail
+                    Screen.EditTransaksi.route,  // Tambahkan EditTransaksi untuk konsistensi
+                    Screen.ForgotPassword.route
                 )
             ) {
                 NavigationBar(

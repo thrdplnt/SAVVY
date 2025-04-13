@@ -242,11 +242,9 @@ class TambahTransaksiViewModel @Inject constructor(
                     Log.d("TambahTransaksiViewModel", "No unsynced transactions to sync")
                     return@launch
                 }
-
-                Log.d("TambahTransaksiViewModel", "Starting sync for ${unsyncedTransactions.size} unsynced transactions")
+                Log.d("TambahTransaksiViewModel", "Syncing ${unsyncedTransactions.size} transactions")
                 for (localTransaction in unsyncedTransactions) {
                     try {
-                        Log.d("TambahTransaksiViewModel", "Syncing transaction ID: ${localTransaction.id}")
                         val transaction = Transaction(
                             type = localTransaction.type,
                             amount = localTransaction.amount,
@@ -254,42 +252,26 @@ class TambahTransaksiViewModel @Inject constructor(
                             note = localTransaction.note,
                             date = localTransaction.date,
                             userId = localTransaction.userId,
-                            imageUrl = localTransaction.imageUrl
+                            imageUrl = null // Will be updated after upload
                         )
-
-                        val documentReference = db.collection("transactions")
-                            .add(transaction)
-                            .await()
-                        Log.d("TambahTransaksiViewModel", "Synced transaction to Firestore with ID: ${documentReference.id}")
-
+                        val documentReference = db.collection("transactions").add(transaction).await()
                         if (localTransaction.imageUri != null) {
                             val file = File(localTransaction.imageUri)
                             if (file.exists()) {
                                 val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
-                                val imageUrl = withContext(Dispatchers.IO) {
-                                    uploader.uploadImage(file, destinationFileName)
-                                }
+                                val imageUrl = uploader.uploadImage(file, destinationFileName)
                                 if (imageUrl != null) {
                                     documentReference.update("imageUrl", imageUrl).await()
-                                    Log.d("TambahTransaksiViewModel", "Updated Firestore with image URL: $imageUrl")
-                                } else {
-                                    Log.w("TambahTransaksiViewModel", "Failed to upload image for transaction ID: ${localTransaction.id}")
                                 }
-                            } else {
-                                Log.w("TambahTransaksiViewModel", "Image file not found: ${localTransaction.imageUri}")
                             }
                         }
-
                         localTransactionDao.deleteById(localTransaction.id)
-                        Log.d("TambahTransaksiViewModel", "Deleted synced local transaction with ID: ${localTransaction.id}")
                     } catch (e: Exception) {
                         Log.e("TambahTransaksiViewModel", "Failed to sync transaction ID ${localTransaction.id}: $e")
-                        // Lanjutkan ke transaksi berikutnya, jangan hentikan proses
                     }
                 }
-                Log.d("TambahTransaksiViewModel", "Sync completed")
             } catch (e: Exception) {
-                Log.e("TambahTransaksiViewModel", "Error during syncLocalTransactions: $e")
+                Log.e("TambahTransaksiViewModel", "Error during sync: $e")
             }
         }
     }
