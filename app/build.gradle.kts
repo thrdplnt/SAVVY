@@ -137,7 +137,5 @@ dependencies {
     implementation("io.ktor:ktor-client-android:2.3.12")
 
     implementation ("com.google.android.material:material:1.9.0")
-    implementation ("androidx.work:work-runtime-ktx:2.9.0")
-    implementation ("androidx.hilt:hilt-work:1.0.0")
-    implementation ("androidx.hilt:hilt-work:1.2.0")
+
 }

@@ -5,7 +5,6 @@ import android.app.DatePickerDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,18 +60,15 @@ fun TambahTransaksiScreen(
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
-    var dateText by remember {
-        mutableStateOf(
-            SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(Date())
-        )
-    }
-    var date by remember { mutableStateOf(Date()) } // Default ke tanggal saat ini
+    var dateText by remember { mutableStateOf("") }
+    var date by remember { mutableStateOf<Date?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var existingImageUrl by remember { mutableStateOf<String?>(null) }
     var isEditMode by remember { mutableStateOf(transactionId != null) }
     var showPhotoOptionsDialog by remember { mutableStateOf(false) }
     var isImageRemoved by remember { mutableStateOf(false) }
+    var localTransactionId by remember { mutableStateOf<Long?>(null) }
 
     // Opsi untuk dropdown
     val transactionKinds = listOf("Pemasukan", "Pengeluaran")
@@ -103,10 +99,10 @@ fun TambahTransaksiScreen(
                         amount = trans.amount.toString()
                         category = trans.category
                         note = trans.note
-                        date = trans.date ?: Date()
-                        dateText = date.let { d ->
+                        date = trans.date
+                        dateText = trans.date?.let { d ->
                             SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(d)
-                        }
+                        } ?: ""
                         existingImageUrl = trans.imageUrl
                     }
                 }
@@ -123,7 +119,7 @@ fun TambahTransaksiScreen(
         { _, year, month, dayOfMonth ->
             calendar.set(year, month, dayOfMonth)
             date = calendar.time
-            dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date)
+            dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date!!)
         },
         calendar.get(Calendar.YEAR),
         calendar.get(Calendar.MONTH),
@@ -297,9 +293,9 @@ fun TambahTransaksiScreen(
                     try {
                         val sdf = SimpleDateFormat("dd/MM/yyyy", Locale("id"))
                         sdf.isLenient = false
-                        date = sdf.parse(newValue) ?: Date()
+                        date = sdf.parse(newValue)
                     } catch (e: Exception) {
-                        date = Date()
+                        date = null
                     }
                 },
                 label = "Tanggal (dd/mm/yyyy)",
@@ -363,20 +359,8 @@ fun TambahTransaksiScreen(
         Button(
             onClick = {
                 // Validasi input
-                if (transactionKind.isEmpty()) {
-                    Toast.makeText(context, "Jenis transaksi harus dipilih", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-                if (type.isEmpty()) {
-                    Toast.makeText(context, "Dompet harus dipilih", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-                if (amount.isEmpty()) {
-                    Toast.makeText(context, "Jumlah uang harus diisi", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-                if (category.isEmpty()) {
-                    Toast.makeText(context, "Kategori harus dipilih", Toast.LENGTH_SHORT).show()
+                if (transactionKind.isEmpty() || type.isEmpty() || amount.isEmpty() || category.isEmpty() || date == null) {
+                    Toast.makeText(context, "Harap isi semua kolom wajib", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
 
@@ -408,18 +392,16 @@ fun TambahTransaksiScreen(
                 if (isEditMode) {
                     viewModel.updateTransaction(
                         transactionId = transactionId,
-                        localTransactionId = null, // Tidak digunakan untuk saat ini
+                        localTransactionId = localTransactionId,
                         transaction = transaction,
                         imageUri = if (isImageRemoved) null else imageUri,
                         onSuccess = {
-                            Log.d("TambahTransaksiScreen", "Update transaction success")
                             isLoading = false
                             Toast.makeText(context, "Transaksi berhasil diperbarui", Toast.LENGTH_SHORT).show()
                             navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
                             navController.popBackStack()
                         },
                         onFailure = { e ->
-                            Log.e("TambahTransaksiScreen", "Update transaction failed: $e")
                             isLoading = false
                             Toast.makeText(context, "Gagal memperbarui transaksi: ${e.message}", Toast.LENGTH_LONG).show()
                         }
@@ -429,7 +411,6 @@ fun TambahTransaksiScreen(
                         transaction = transaction,
                         imageUri = if (isImageRemoved) null else imageUri,
                         onSuccess = { firestoreId ->
-                            Log.d("TambahTransaksiScreen", "Save transaction success, firestoreId: $firestoreId")
                             isLoading = false
                             val message = if (firestoreId != null) {
                                 "Tambah Transaksi Sukses Dibuat"
@@ -445,9 +426,8 @@ fun TambahTransaksiScreen(
                             )
                         },
                         onFailure = { e ->
-                            Log.e("TambahTransaksiScreen", "Save transaction failed: $e")
                             isLoading = false
-                            Toast.makeText(context, "Gagal menyimpan transaksi: ${e.message}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Gagal: ${e.message}", Toast.LENGTH_LONG).show()
                         }
                     )
                 }
