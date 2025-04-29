@@ -13,5 +13,6 @@ data class Transaction(
     val note: String = "",
     @ServerTimestamp
     val date: Date? = null,
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    val imageUri: String? = null // Tambahkan untuk mendukung gambar lokal
 )

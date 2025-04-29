@@ -16,14 +16,15 @@ import androidx.compose.ui.unit.sp
 import com.example.savvy.R
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.theme.Navy
+import com.example.savvy.ui.theme.Shadow
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.foundation.Image
 
 @Composable
 fun TransactionItem(
     transaction: Transaction,
+    isLocal: Boolean = false,
     onClick: (Transaction) -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("id"))
@@ -41,7 +42,7 @@ fun TransactionItem(
     ) {
         when (category) {
             "Makanan", "Transportasi", "Hiburan", "Pendidikan", "Tagihan", "Kesehatan", "Belanja", "Uang Keluar", "Pemasukan" -> {
-                Image(
+                androidx.compose.foundation.Image(
                     painter = painterResource(id = when (category) {
                         "Makanan" -> R.drawable.ic_makanan
                         "Transportasi" -> R.drawable.ic_transportasi
@@ -79,16 +80,21 @@ fun TransactionItem(
             Text(
                 text = dateString,
                 fontSize = 14.sp,
-                color = Color.Gray
+                color = Shadow
             )
+            if (isLocal) {
+                Text(
+                    text = "Belum disinkronkan",
+                    fontSize = 12.sp,
+                    color = Color.Red
+                )
+            }
         }
         Text(
             text = "${if (isPemasukan) "+" else "-"}Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-//            color = if (isPemasukan) Color.Green else Navy
             color = Navy
-
         )
     }
 }

@@ -1,14 +1,13 @@
 package com.example.savvy.ui.riwayat
 
 import android.app.DatePickerDialog
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
@@ -18,26 +17,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.savvy.data.Screen
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.components.TransactionItem
 import com.example.savvy.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
 fun RiwayatScreen(
-    navController: NavController
+    navController: NavController,
+    viewModel: RiwayatViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
 
-    // State untuk data saldo dan transaksi
+    // State untuk transaksi
+    val transactions by viewModel.transactions.collectAsState()
+    var filteredTransactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
+
+    // State untuk filter dan saldo
     var totalSaldo by rememberSaveable { mutableLongStateOf(0L) }
     var saldoTunai by rememberSaveable { mutableLongStateOf(0L) }
     var saldoTabungan by rememberSaveable { mutableLongStateOf(0L) }
@@ -45,10 +48,6 @@ fun RiwayatScreen(
     var totalPemasukan by rememberSaveable { mutableLongStateOf(0L) }
     var totalPengeluaran by rememberSaveable { mutableLongStateOf(0L) }
     var isLoading by remember { mutableStateOf(true) }
-
-    // State untuk transaksi
-    val transactions = remember { mutableStateListOf<Transaction>() }
-    val filteredTransactions = remember { mutableStateListOf<Transaction>() }
 
     // State untuk filter Dompetku
     val walletOptions = listOf("Semua", "Tunai", "Tabungan", "Non-Tunai")
@@ -64,75 +63,26 @@ fun RiwayatScreen(
     var showMonthPicker by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(Calendar.getInstance()) }
 
-    // State untuk pemilihan tanggal (start and end dates)
+    // State untuk pemilihan tanggal
     var showDateRangePicker by remember { mutableStateOf(false) }
     var startDate by remember { mutableStateOf(Calendar.getInstance()) }
     var endDate by remember { mutableStateOf(Calendar.getInstance()) }
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
-    // State untuk memicu pembaruan data
-    var refreshTrigger by remember { mutableStateOf(0) }
-
-    // Ambil data transaksi dari Firestore
-    LaunchedEffect(refreshTrigger) {
-        val user = auth.currentUser
-        if (user == null) {
-            navController.navigate("login")
-            return@LaunchedEffect
-        }
-
-        db.collection("transactions")
-            .whereEqualTo("userId", user.uid)
-            .get()
-            .addOnSuccessListener { querySnapshot ->
-                var tunai = 0L
-                var tabungan = 0L
-                var nonTunai = 0L
-
-                transactions.clear()
-
-                for (document in querySnapshot.documents) {
-                    val transaction = document.toObject(Transaction::class.java)?.copy(id = document.id)
-                    if (transaction != null) {
-                        transactions.add(transaction)
-
-                        // Hitung saldo per dompet (tanpa mempertimbangkan filter)
-                        val amount = transaction.amount
-                        when (transaction.type) {
-                            "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
-                            "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
-                            "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunai += amount else nonTunai -= amount
-                        }
-                    }
-                }
-
-                saldoTunai = tunai
-                saldoTabungan = tabungan
-                saldoNonTunai = nonTunai
-                totalSaldo = tunai + tabungan + nonTunai
-                isLoading = false
-            }
-            .addOnFailureListener { e ->
-                isLoading = false
-                android.widget.Toast.makeText(
-                    context,
-                    "Gagal mengambil data transaksi: ${e.message}",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
-            }
-    }
-
-    // Fungsi untuk memfilter transaksi dan menghitung Pemasukan/Pengeluaran berdasarkan filter
+    // Hitung saldo dan filter transaksi
     fun filterTransactions() {
-        filteredTransactions.clear()
+        Log.d("RiwayatScreen", "Filtering transactions. Wallet: $selectedWallet, Range: $selectedRange")
+        val startTime = System.currentTimeMillis()
         var pemasukan = 0L
         var pengeluaran = 0L
+        var tunai = 0L
+        var tabungan = 0L
+        var nonTunai = 0L
 
         val calendar = Calendar.getInstance()
         val currentDate = calendar.time
 
-        // Tentukan rentang waktu berdasarkan filter
         val startDateFilter: Date
         var endDateFilter: Date = currentDate
 
@@ -206,34 +156,48 @@ fun RiwayatScreen(
             }
         }
 
-        // Filter transaksi berdasarkan dompet dan rentang waktu
+        val filtered = mutableListOf<Transaction>()
         transactions.forEach { transaction ->
             val transactionDate = transaction.date ?: return@forEach
             val matchesWallet = selectedWallet == "Semua" || transaction.type == selectedWallet
             val matchesDate = !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
             if (matchesWallet && matchesDate) {
-                filteredTransactions.add(transaction)
-
-                // Hitung pemasukan dan pengeluaran berdasarkan transaksi yang difilter
+                filtered.add(transaction)
                 if (transaction.category == "Pemasukan") {
                     pemasukan += transaction.amount
                 } else {
                     pengeluaran += transaction.amount
                 }
             }
+
+            // Hitung saldo per dompet
+            val amount = transaction.amount
+            when (transaction.type) {
+                "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
+                "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
+                "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunai += amount else nonTunai -= amount
+            }
         }
 
-        // Update state Pemasukan dan Pengeluaran
         totalPemasukan = pemasukan
         totalPengeluaran = pengeluaran
-
-        // Sort by date (descending)
-        filteredTransactions.sortByDescending { it.date }
+        saldoTunai = tunai
+        saldoTabungan = tabungan
+        saldoNonTunai = nonTunai
+        totalSaldo = tunai + tabungan + nonTunai
+        filteredTransactions = filtered.sortedByDescending { it.date }
+        Log.d("RiwayatScreen", "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms")
     }
 
-    // Terapkan filter setiap kali filter berubah
-    LaunchedEffect(selectedWallet, selectedRange, selectedMonth.timeInMillis, startDate.timeInMillis, endDate.timeInMillis, transactions.size) {
-        filterTransactions()
+    LaunchedEffect(selectedWallet, selectedRange, selectedMonth.timeInMillis, startDate.timeInMillis, endDate.timeInMillis, transactions) {
+        isLoading = true
+        try {
+            filterTransactions()
+        } catch (e: Exception) {
+            Log.e("RiwayatScreen", "Error filtering transactions: $e")
+        } finally {
+            isLoading = false
+        }
     }
 
     // Dialog untuk memilih tanggal mulai
@@ -245,7 +209,6 @@ fun RiwayatScreen(
                 startDate.set(Calendar.MONTH, month)
                 startDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
                 showStartDatePicker = false
-                // Pastikan tanggal akhir tidak sebelum tanggal mulai
                 if (endDate.before(startDate)) {
                     endDate = startDate.clone() as Calendar
                 }
@@ -265,7 +228,6 @@ fun RiwayatScreen(
                 endDate.set(Calendar.MONTH, month)
                 endDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
                 showEndDatePicker = false
-                // Pastikan tanggal akhir tidak sebelum tanggal mulai
                 if (endDate.before(startDate)) {
                     startDate = endDate.clone() as Calendar
                 }
@@ -276,13 +238,13 @@ fun RiwayatScreen(
         ).show()
     }
 
-    // Dialog untuk memilih bulan (scrolling month and year)
+    // Dialog untuk memilih bulan
     if (showMonthPicker) {
         val months = listOf(
             "Januari", "Februari", "Maret", "April", "Mei", "Juni",
             "Juli", "Agustus", "September", "Oktober", "November", "Desember"
         )
-        val years = (2020..2030).toList() // Rentang tahun
+        val years = (2020..2030).toList()
         var tempMonth by remember { mutableStateOf(selectedMonth.get(Calendar.MONTH)) }
         var tempYear by remember { mutableStateOf(selectedMonth.get(Calendar.YEAR)) }
 
@@ -291,7 +253,7 @@ fun RiwayatScreen(
             title = {
                 Text(
                     text = "Pilih Bulan",
-                    style = Typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineMedium,
                     color = Navy
                 )
             },
@@ -301,7 +263,6 @@ fun RiwayatScreen(
                         .fillMaxWidth()
                         .height(200.dp)
                 ) {
-                    // Daftar bulan yang bisa discroll
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
@@ -312,7 +273,7 @@ fun RiwayatScreen(
                             val monthIndex = months.indexOf(month)
                             Text(
                                 text = month,
-                                style = Typography.bodyLarge,
+                                style = MaterialTheme.typography.bodyLarge,
                                 color = if (tempMonth == monthIndex) Navy else Shadow,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -323,7 +284,6 @@ fun RiwayatScreen(
                             )
                         }
                     }
-                    // Daftar tahun yang bisa discroll
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
@@ -333,7 +293,7 @@ fun RiwayatScreen(
                         items(years) { year ->
                             Text(
                                 text = year.toString(),
-                                style = Typography.bodyLarge,
+                                style = MaterialTheme.typography.bodyLarge,
                                 color = if (tempYear == year) Navy else Shadow,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -356,7 +316,7 @@ fun RiwayatScreen(
                 ) {
                     Text(
                         text = "OK",
-                        style = Typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Navy
                     )
                 }
@@ -367,7 +327,7 @@ fun RiwayatScreen(
                 ) {
                     Text(
                         text = "Batal",
-                        style = Typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Navy
                     )
                 }
@@ -376,7 +336,7 @@ fun RiwayatScreen(
         )
     }
 
-    // Dialog untuk memilih tanggal (start and end dates)
+    // Dialog untuk memilih rentang tanggal
     if (showDateRangePicker) {
         val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("id"))
         AlertDialog(
@@ -384,13 +344,12 @@ fun RiwayatScreen(
             title = {
                 Text(
                     text = "Pilih Rentang Tanggal",
-                    style = Typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineMedium,
                     color = Navy
                 )
             },
             text = {
                 Column {
-                    // Tanggal Mulai
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -399,31 +358,30 @@ fun RiwayatScreen(
                     ) {
                         Text(
                             text = "Tanggal Mulai",
-                            style = Typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = Navy
                         )
                         Text(
                             text = dateFormat.format(startDate.time),
-                            style = Typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = Navy,
                             modifier = Modifier
                                 .clickable { showStartDatePicker = true }
                                 .padding(8.dp)
                         )
                     }
-                    // Tanggal Akhir
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
                             text = "Tanggal Akhir",
-                            style = Typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = Navy
                         )
                         Text(
                             text = dateFormat.format(endDate.time),
-                            style = Typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = Navy,
                             modifier = Modifier
                                 .clickable { showEndDatePicker = true }
@@ -438,7 +396,7 @@ fun RiwayatScreen(
                 ) {
                     Text(
                         text = "OK",
-                        style = Typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Navy
                     )
                 }
@@ -449,7 +407,7 @@ fun RiwayatScreen(
                 ) {
                     Text(
                         text = "Batal",
-                        style = Typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Navy
                     )
                 }
@@ -463,8 +421,7 @@ fun RiwayatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(White)
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Total Saldo
@@ -476,13 +433,13 @@ fun RiwayatScreen(
         } else {
             Text(
                 text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalSaldo)}",
-                style = Typography.headlineLarge,
+                style = MaterialTheme.typography.headlineLarge,
                 color = Navy,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             Text(
                 text = "Total saldo",
-                style = Typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall,
                 color = Shadow,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
@@ -494,7 +451,6 @@ fun RiwayatScreen(
                     .padding(bottom = 24.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Dropdown Dompetku
                 Box(
                     modifier = Modifier.weight(1f)
                 ) {
@@ -508,7 +464,7 @@ fun RiwayatScreen(
                     ) {
                         Text(
                             text = selectedWallet,
-                            style = Typography.bodyLarge
+                            style = MaterialTheme.typography.bodyLarge
                         )
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
@@ -525,7 +481,7 @@ fun RiwayatScreen(
                     ) {
                         walletOptions.forEach { option ->
                             DropdownMenuItem(
-                                text = { Text(option, style = Typography.bodyLarge) },
+                                text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
                                 onClick = {
                                     selectedWallet = option
                                     walletExpanded = false
@@ -537,7 +493,6 @@ fun RiwayatScreen(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Dropdown Rentang
                 Box(
                     modifier = Modifier.weight(1f)
                 ) {
@@ -551,7 +506,7 @@ fun RiwayatScreen(
                     ) {
                         Text(
                             text = selectedRange,
-                            style = Typography.bodyLarge
+                            style = MaterialTheme.typography.bodyLarge
                         )
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
@@ -568,7 +523,7 @@ fun RiwayatScreen(
                     ) {
                         rangeOptions.forEach { option ->
                             DropdownMenuItem(
-                                text = { Text(option, style = Typography.bodyLarge) },
+                                text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
                                 onClick = {
                                     selectedRange = option
                                     rangeExpanded = false
@@ -606,12 +561,12 @@ fun RiwayatScreen(
                     ) {
                         Text(
                             text = "Pemasukan",
-                            style = Typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = Navy
                         )
                         Text(
                             text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan)}",
-                            style = Typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = Navy
                         )
                     }
@@ -622,12 +577,12 @@ fun RiwayatScreen(
                     ) {
                         Text(
                             text = "Pengeluaran",
-                            style = Typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = Navy
                         )
                         Text(
                             text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPengeluaran)}",
-                            style = Typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = Navy
                         )
                     }
@@ -644,12 +599,12 @@ fun RiwayatScreen(
                     ) {
                         Text(
                             text = "Jumlah",
-                            style = Typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = Navy
                         )
                         Text(
                             text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan - totalPengeluaran)}",
-                            style = Typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = if (totalPemasukan - totalPengeluaran >= 0) Navy else ErrorRed
                         )
                     }
@@ -660,6 +615,7 @@ fun RiwayatScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .weight(1f) // Memastikan Card memanjang mengisi ruang yang tersedia
                     .padding(bottom = 24.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
@@ -674,7 +630,7 @@ fun RiwayatScreen(
                 ) {
                     Text(
                         text = "Riwayat",
-                        style = Typography.headlineMedium,
+                        style = MaterialTheme.typography.headlineMedium,
                         color = Navy,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -684,36 +640,32 @@ fun RiwayatScreen(
                     if (filteredTransactions.isEmpty()) {
                         Text(
                             text = "Tidak ada transaksi",
-                            style = Typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = Shadow,
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         )
                     } else {
-                        filteredTransactions.forEach { transaction ->
-                            TransactionItem(
-                                transaction = transaction,
-                                onClick = {
-                                    // Navigasi ke DetailTransaksiScreen dengan transactionId
-                                    navController.navigate(Screen.DetailTransaksi.createRoute(transaction.id))
-                                }
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f) // Memastikan LazyColumn memanjang
+                        ) {
+                            items(filteredTransactions) { transaction ->
+                                val isLocal = transaction.id.startsWith("local_")
+                                TransactionItem(
+                                    transaction = transaction,
+                                    isLocal = isLocal,
+                                    onClick = {
+                                        Log.d("RiwayatScreen", "Navigating to DetailTransaksi with ID: ${transaction.id}")
+                                        navController.navigate(Screen.DetailTransaksi.createRoute(transaction.id))
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
                         }
                     }
                 }
             }
-
-            // Spacer untuk memastikan konten tidak terpotong oleh navbar
-            Spacer(modifier = Modifier.height(80.dp))
-        }
-    }
-
-    // Memicu pembaruan data ketika kembali ke layar ini
-    LaunchedEffect(Unit) {
-        navController.currentBackStackEntry?.savedStateHandle?.getLiveData<String>("refresh")?.observe(
-            navController.currentBackStackEntry!!
-        ) {
-            refreshTrigger++ // Memicu pembaruan data
         }
     }
 }

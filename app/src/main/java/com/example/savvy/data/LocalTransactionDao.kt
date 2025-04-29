@@ -23,4 +23,13 @@ interface LocalTransactionDao {
 
     @Query("SELECT * FROM local_transactions WHERE isSynced = 0")
     suspend fun getUnsyncedTransactionsSync(): List<LocalTransaction>
+
+    @Query("SELECT * FROM local_transactions WHERE userId = :userId")
+    fun getAllTransactions(userId: String): Flow<List<LocalTransaction>>
+
+    @Query("SELECT * FROM local_transactions WHERE firestoreId = :firestoreId")
+    suspend fun getByFirestoreId(firestoreId: String): LocalTransaction?
+
+    @Query("SELECT * FROM local_transactions WHERE id = :localId")
+    suspend fun getTransactionByLocalId(localId: Long): LocalTransaction?
 }

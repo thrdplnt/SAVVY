@@ -15,5 +15,7 @@ data class LocalTransaction(
     val date: Date,
     val imageUri: String? = null,
     val imageUrl: String? = null,
-    val isSynced: Boolean = false
+    val isSynced: Boolean = false,
+    val firestoreId: String? = null,
+    val walletId: String? = null // Tambahkan walletId
 )
