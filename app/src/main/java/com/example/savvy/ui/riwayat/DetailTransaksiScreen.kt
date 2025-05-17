@@ -23,10 +23,7 @@ import coil.compose.AsyncImage
 import com.example.savvy.data.Screen
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.theme.*
-import com.example.savvy.ui.tambah.TambahTransaksiViewModel
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.io.File
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -36,9 +33,9 @@ import java.util.*
 fun DetailTransaksiScreen(
     navController: NavController,
     transactionId: String,
-    viewModel: TambahTransaksiViewModel = hiltViewModel()
+    viewModel: RiwayatViewModel = hiltViewModel()
 ) {
-    val db = FirebaseFirestore.getInstance()
+    val transactions by viewModel.transactions.collectAsState()
     var transaction by remember { mutableStateOf<Transaction?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var showImageDialog by remember { mutableStateOf(false) }
@@ -47,51 +44,15 @@ fun DetailTransaksiScreen(
 
     Log.d("DetailTransaksiScreen", "Transaction ID: $transactionId")
 
-    LaunchedEffect(transactionId) {
+    LaunchedEffect(transactionId, transactions) {
         isLoading = true
         try {
-            if (transactionId.startsWith("local_")) {
-                val localId = transactionId.removePrefix("local_").toLongOrNull()
-                if (localId != null) {
-                    val localTransaction = viewModel.localTransactionDao.getTransactionByLocalId(localId)
-                    if (localTransaction != null) {
-                        transaction = Transaction(
-                            id = transactionId,
-                            userId = localTransaction.userId,
-                            walletId = localTransaction.walletId ?: "",
-                            type = localTransaction.type,
-                            amount = localTransaction.amount,
-                            category = localTransaction.category,
-                            note = localTransaction.note,
-                            date = localTransaction.date,
-                            imageUrl = localTransaction.imageUrl,
-                            imageUri = localTransaction.imageUri
-                        )
-                        Log.d("DetailTransaksiScreen", "Loaded local transaction: $localTransaction, imageUri: ${localTransaction.imageUri}")
-                    } else {
-                        Log.w("DetailTransaksiScreen", "Local transaction not found for ID: $localId")
-                        transaction = null
-                    }
-                } else {
-                    Log.w("DetailTransaksiScreen", "Invalid local transaction ID: $transactionId")
-                    transaction = null
-                }
+            // Find transaction in the transactions flow
+            transaction = transactions.find { it.id == transactionId }
+            if (transaction != null) {
+                Log.d("DetailTransaksiScreen", "Loaded transaction: $transaction, imageUri: ${transaction?.imageUri}")
             } else {
-                val document = db.collection("transactions")
-                    .document(transactionId)
-                    .get()
-                    .await()
-                transaction = document.toObject(Transaction::class.java)?.copy(id = document.id)
-                if (transaction != null) {
-                    // Cari transaksi lokal untuk mendapatkan imageUri
-                    val localTransaction = viewModel.localTransactionDao.getByFirestoreId(transactionId)
-                    if (localTransaction != null) {
-                        transaction = transaction!!.copy(imageUri = localTransaction.imageUri)
-                    }
-                    Log.d("DetailTransaksiScreen", "Loaded Firestore transaction: $transaction, imageUri: ${transaction?.imageUri}")
-                } else {
-                    Log.w("DetailTransaksiScreen", "Firestore transaction not found for ID: $transactionId")
-                }
+                Log.w("DetailTransaksiScreen", "Transaction not found for ID: $transactionId")
             }
         } catch (e: Exception) {
             Log.e("DetailTransaksiScreen", "Error loading transaction: $e")
@@ -103,52 +64,24 @@ fun DetailTransaksiScreen(
 
     fun deleteTransaction() {
         transaction?.id?.let { id ->
-            if (id.startsWith("local_")) {
-                val localId = id.removePrefix("local_").toLongOrNull()
-                if (localId != null) {
-                    viewModel.viewModelScope.launch {
-                        try {
-                            viewModel.localTransactionDao.deleteById(localId)
-                            android.widget.Toast.makeText(
-                                context,
-                                "Transaksi lokal berhasil dihapus",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                            navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
-                            navController.popBackStack()
-                        } catch (e: Exception) {
-                            Log.e("DetailTransaksiScreen", "Error deleting local transaction: $e")
-                            android.widget.Toast.makeText(
-                                context,
-                                "Gagal menghapus transaksi: ${e.message}",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
+            viewModel.viewModelScope.launch {
+                val result = viewModel.deleteTransaction(id)
+                if (result.isSuccess) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Transaksi berhasil dihapus",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
+                    navController.popBackStack()
                 } else {
-                    Log.w("DetailTransaksiScreen", "Invalid local transaction ID for deletion: $id")
+                    Log.e("DetailTransaksiScreen", "Error deleting transaction: ${result.exceptionOrNull()}")
+                    android.widget.Toast.makeText(
+                        context,
+                        "Gagal menghapus transaksi: ${result.exceptionOrNull()?.message}",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                 }
-            } else {
-                db.collection("transactions")
-                    .document(id)
-                    .delete()
-                    .addOnSuccessListener {
-                        android.widget.Toast.makeText(
-                            context,
-                            "Transaksi berhasil dihapus",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                        navController.previousBackStackEntry?.savedStateHandle?.set("refresh", "true")
-                        navController.popBackStack()
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("DetailTransaksiScreen", "Error deleting Firestore transaction: $e")
-                        android.widget.Toast.makeText(
-                            context,
-                            "Gagal menghapus transaksi: ${e.message}",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
             }
         }
     }
@@ -232,7 +165,7 @@ fun DetailTransaksiScreen(
                     Text(
                         text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(transaction!!.amount)}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (transaction!!.category == "Pemasukan") Navy else ErrorRed
+                        color = if (transaction!!.type == "Pemasukan") Navy else ErrorRed
                     )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -281,7 +214,7 @@ fun DetailTransaksiScreen(
                         color = Navy
                     )
                     Text(
-                        text = transaction!!.note.ifEmpty { "Tidak ada catatan" },
+                        text = transaction!!.note?.ifEmpty { "Tidak ada catatan" } ?: "Tidak ada catatan",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Navy
                     )
@@ -305,13 +238,13 @@ fun DetailTransaksiScreen(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Prioritaskan imageUri untuk offline
+                // Only show local imageUri
                 transaction!!.imageUri?.let { imageUri ->
                     val file = File(imageUri)
                     if (file.exists()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Bukti Transaksi (Lokal)",
+                            text = "Bukti Transaksi",
                             style = MaterialTheme.typography.bodyLarge,
                             color = Navy,
                             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -319,7 +252,7 @@ fun DetailTransaksiScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         AsyncImage(
                             model = imageUri,
-                            contentDescription = "Bukti Transaksi Lokal",
+                            contentDescription = "Bukti Transaksi",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(3f / 4f)
@@ -338,51 +271,7 @@ fun DetailTransaksiScreen(
                             color = ErrorRed,
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         )
-                        // Coba imageUrl sebagai fallback
-                        transaction!!.imageUrl?.let { imageUrl ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Bukti Transaksi (Online - Hanya Tersedia Online)",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Navy,
-                                modifier = Modifier.align(Alignment.CenterHorizontally)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            AsyncImage(
-                                model = imageUrl,
-                                contentDescription = "Bukti Transaksi Online",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(3f / 4f)
-                                    .background(Color.LightGray, shape = RoundedCornerShape(8.dp))
-                                    .clickable { showImageDialog = true },
-                                onError = { error ->
-                                    Log.e("DetailTransaksiScreen", "Failed to load online image: $imageUrl, error: ${error.result.throwable}")
-                                }
-                            )
-                        }
                     }
-                } ?: transaction!!.imageUrl?.let { imageUrl ->
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Bukti Transaksi (Online - Hanya Tersedia Online)",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Navy,
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    AsyncImage(
-                        model = imageUrl,
-                        contentDescription = "Bukti Transaksi",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(3f / 4f)
-                            .background(Color.LightGray, shape = RoundedCornerShape(8.dp))
-                            .clickable { showImageDialog = true },
-                        onError = { error ->
-                            Log.e("DetailTransaksiScreen", "Failed to load online image: $imageUrl, error: ${error.result.throwable}")
-                        }
-                    )
                 } ?: run {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -408,41 +297,32 @@ fun DetailTransaksiScreen(
                             }
                         },
                         text = {
-                            // Prioritaskan imageUri untuk dialog
-                            if (transaction!!.imageUri != null && File(transaction!!.imageUri).exists()) {
-                                Log.d("DetailTransaksiScreen", "Loading dialog image from local: ${transaction!!.imageUri}")
-                                AsyncImage(
-                                    model = transaction!!.imageUri,
-                                    contentDescription = "Bukti Transaksi (Lokal)",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(3f / 4f)
-                                        .background(Color.LightGray, shape = RoundedCornerShape(8.dp)),
-                                    onError = { error ->
-                                        Log.e("DetailTransaksiScreen", "Failed to load dialog local image: ${transaction!!.imageUri}, error: ${error.result.throwable}")
-                                    }
-                                )
-                            } else if (transaction!!.imageUrl != null) {
-                                Log.d("DetailTransaksiScreen", "Loading dialog image from online: ${transaction!!.imageUrl}")
-                                AsyncImage(
-                                    model = transaction!!.imageUrl,
-                                    contentDescription = "Bukti Transaksi (Online)",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(3f / 4f)
-                                        .background(Color.LightGray, shape = RoundedCornerShape(8.dp)),
-                                    onError = { error ->
-                                        Log.e("DetailTransaksiScreen", "Failed to load dialog online image: ${transaction!!.imageUrl}, error: ${error.result.throwable}")
-                                    }
-                                )
-                            } else {
-                                Log.w("DetailTransaksiScreen", "No image available for dialog")
-                                Text(
-                                    text = "Gambar tidak tersedia",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = ErrorRed
-                                )
-                            }
+                            transaction!!.imageUri?.let { imageUri ->
+                                if (File(imageUri).exists()) {
+                                    Log.d("DetailTransaksiScreen", "Loading dialog image from local: $imageUri")
+                                    AsyncImage(
+                                        model = imageUri,
+                                        contentDescription = "Bukti Transaksi",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(3f / 4f)
+                                            .background(Color.LightGray, shape = RoundedCornerShape(8.dp)),
+                                        onError = { error ->
+                                            Log.e("DetailTransaksiScreen", "Failed to load dialog local image: $imageUri, error: ${error.result.throwable}")
+                                        }
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Gambar tidak tersedia",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = ErrorRed
+                                    )
+                                }
+                            } ?: Text(
+                                text = "Gambar tidak tersedia",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = ErrorRed
+                            )
                         },
                         containerColor = White
                     )

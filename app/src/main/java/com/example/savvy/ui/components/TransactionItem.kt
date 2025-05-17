@@ -82,13 +82,13 @@ fun TransactionItem(
                 fontSize = 14.sp,
                 color = Shadow
             )
-            if (isLocal) {
-                Text(
-                    text = "Belum disinkronkan",
-                    fontSize = 12.sp,
-                    color = Color.Red
-                )
-            }
+//            if (isLocal) {
+//                Text(
+//                    text = "Belum disinkronkan",
+//                    fontSize = 12.sp,
+//                    color = Color.Red
+//                )
+//            }
         }
         Text(
             text = "${if (isPemasukan) "+" else "-"}Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",

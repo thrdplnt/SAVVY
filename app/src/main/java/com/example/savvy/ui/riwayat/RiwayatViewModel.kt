@@ -49,10 +49,10 @@ class RiwayatViewModel @Inject constructor(
             return@flow
         }
         try {
-            // Ambil transaksi lokal
+            // Fetch local transactions
             val localTransactionsFlow = localTransactionDao.getAllTransactions(user.uid)
             val localTransactions = localTransactionsFlow.first().map { local ->
-                Log.d("RiwayatViewModel", "Local transaction: $local, imageUri: ${local.imageUri}")
+                Log.d("RiwayatViewModel", "Local transaction: $local, imageUri: ${local.imageUri}, firestoreId: ${local.firestoreId}")
                 Transaction(
                     id = local.firestoreId ?: "local_${local.id}",
                     userId = local.userId,
@@ -61,13 +61,13 @@ class RiwayatViewModel @Inject constructor(
                     category = local.category,
                     note = local.note,
                     date = local.date,
-                    imageUrl = local.imageUrl,
+                    imageUrl = null, // Ignore imageUrl
                     imageUri = local.imageUri,
                     walletId = local.walletId ?: ""
                 )
             }
 
-            // Ambil transaksi Firestore
+            // Fetch Firestore transactions
             val firestoreTransactions = try {
                 db.collection("transactions")
                     .whereEqualTo("userId", user.uid)
@@ -75,16 +75,41 @@ class RiwayatViewModel @Inject constructor(
                     .await()
                     .documents
                     .mapNotNull { doc ->
-                        doc.toObject(Transaction::class.java)?.copy(id = doc.id)
+                        doc.toObject(Transaction::class.java)?.copy(id = doc.id, imageUrl = null)
                     }
             } catch (e: Exception) {
                 Log.e("RiwayatViewModel", "Failed to fetch Firestore transactions: $e")
                 emptyList()
             }
 
-            // Gabungkan dan hapus duplikasi
-            val combined = (localTransactions + firestoreTransactions)
-                .distinctBy { it.id }
+            // Merge transactions using a map to avoid duplicates
+            val transactionMap = mutableMapOf<String, Transaction>()
+            for (localTx in localTransactions) {
+                // Use firestoreId if available, otherwise use composite key
+                val key = if (localTx.id.startsWith("local_")) {
+                    "${localTx.userId}_${localTx.type}_${localTx.amount}_${localTx.category}_${localTx.note}_${localTx.date?.time}"
+                } else {
+                    localTx.id
+                }
+                transactionMap[key] = transactionMap[key]?.let { existing ->
+                    existing.copy(
+                        id = localTx.id, // Prioritize Firestore ID
+                        imageUri = localTx.imageUri ?: existing.imageUri
+                    )
+                } ?: localTx
+            }
+
+            for (firestoreTx in firestoreTransactions) {
+                val key = firestoreTx.id
+                transactionMap[key] = transactionMap[key]?.let { existing ->
+                    firestoreTx.copy(
+                        id = firestoreTx.id,
+                        imageUri = existing.imageUri // Preserve local imageUri
+                    )
+                } ?: firestoreTx
+            }
+
+            val combined = transactionMap.values
                 .sortedByDescending { it.date }
             Log.d("RiwayatViewModel", "Emitting ${combined.size} transactions")
             emit(combined)
@@ -140,16 +165,7 @@ class RiwayatViewModel @Inject constructor(
         Log.d("RiwayatViewModel", "Starting sync for ${unsyncedTransactions.size} unsynced transactions")
         for (localTransaction in unsyncedTransactions) {
             try {
-                // Cek duplikasi berdasarkan firestoreId
-                if (localTransaction.firestoreId != null) {
-                    val existing = localTransactionDao.getByFirestoreId(localTransaction.firestoreId)
-                    if (existing != null) {
-                        Log.d("RiwayatViewModel", "Transaction with firestoreId ${localTransaction.firestoreId} already exists, skipping")
-                        continue
-                    }
-                }
-
-                // Cek duplikasi berdasarkan properti
+                // Check for duplicates based on key properties
                 val existingFirestore = db.collection("transactions")
                     .whereEqualTo("userId", localTransaction.userId)
                     .whereEqualTo("type", localTransaction.type)
@@ -163,35 +179,20 @@ class RiwayatViewModel @Inject constructor(
                     .firstOrNull()
 
                 if (existingFirestore != null) {
+                    // Transaction exists in Firestore, update Room
                     val firestoreId = existingFirestore.id
-                    val imageUrl = existingFirestore.toObject(Transaction::class.java)?.imageUrl
                     localTransactionDao.update(
                         localTransaction.copy(
                             isSynced = true,
                             firestoreId = firestoreId,
-                            imageUrl = imageUrl
+                            imageUrl = null // Ignore imageUrl
                         )
                     )
                     Log.d("RiwayatViewModel", "Found duplicate in Firestore, updated local transaction ID: ${localTransaction.id}, imageUri: ${localTransaction.imageUri}")
                     continue
                 }
 
-                // Upload gambar jika ada
-                var imageUrl: String? = null
-                if (localTransaction.imageUri != null) {
-                    val file = File(localTransaction.imageUri)
-                    if (file.exists()) {
-                        val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
-                        imageUrl = withContext(Dispatchers.IO) {
-                            uploader.uploadImage(file, destinationFileName)
-                        }
-                        Log.d("RiwayatViewModel", "Uploaded image: $imageUrl, local imageUri: ${localTransaction.imageUri}")
-                    } else {
-                        Log.w("RiwayatViewModel", "Image file not found: ${localTransaction.imageUri}")
-                    }
-                }
-
-                // Simpan ke Firestore
+                // Save to Firestore without image
                 val transaction = Transaction(
                     type = localTransaction.type,
                     amount = localTransaction.amount,
@@ -199,7 +200,8 @@ class RiwayatViewModel @Inject constructor(
                     note = localTransaction.note,
                     date = localTransaction.date,
                     userId = localTransaction.userId,
-                    imageUrl = imageUrl,
+                    imageUrl = null,
+                    imageUri = null, // Firestore doesn't store imageUri
                     walletId = localTransaction.walletId ?: ""
                 )
 
@@ -208,12 +210,12 @@ class RiwayatViewModel @Inject constructor(
                     .await()
                 Log.d("RiwayatViewModel", "Synced transaction to Firestore with ID: ${documentReference.id}")
 
-                // Perbarui Room, pertahankan imageUri
+                // Update Room, preserve imageUri
                 localTransactionDao.update(
                     localTransaction.copy(
                         isSynced = true,
                         firestoreId = documentReference.id,
-                        imageUrl = imageUrl
+                        imageUrl = null
                     )
                 )
                 Log.d("RiwayatViewModel", "Marked local transaction ID: ${localTransaction.id} as synced, imageUri: ${localTransaction.imageUri}")
@@ -222,5 +224,36 @@ class RiwayatViewModel @Inject constructor(
             }
         }
         Log.d("RiwayatViewModel", "Sync completed")
+    }
+
+    suspend fun deleteTransaction(id: String): Result<Unit> {
+        return try {
+            if (id.startsWith("local_")) {
+                val localId = id.removePrefix("local_").toLongOrNull()
+                if (localId != null) {
+                    localTransactionDao.deleteById(localId)
+                    Log.d("RiwayatViewModel", "Deleted local transaction with local ID: $localId")
+                } else {
+                    Log.w("RiwayatViewModel", "Invalid local transaction ID: $id")
+                    return Result.failure(Exception("Invalid local transaction ID"))
+                }
+            } else {
+                db.collection("transactions")
+                    .document(id)
+                    .delete()
+                    .await()
+                // Also delete from Room if it exists
+                val localTransaction = localTransactionDao.getByFirestoreId(id)
+                if (localTransaction != null) {
+                    localTransactionDao.deleteById(localTransaction.id)
+                    Log.d("RiwayatViewModel", "Deleted local transaction with firestoreId: $id")
+                }
+                Log.d("RiwayatViewModel", "Deleted Firestore transaction with ID: $id")
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("RiwayatViewModel", "Error deleting transaction ID: $id, $e")
+            Result.failure(e)
+        }
     }
 }

@@ -7,7 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
@@ -72,7 +74,10 @@ fun RiwayatScreen(
 
     // Hitung saldo dan filter transaksi
     fun filterTransactions() {
-        Log.d("RiwayatScreen", "Filtering transactions. Wallet: $selectedWallet, Range: $selectedRange")
+        Log.d(
+            "RiwayatScreen",
+            "Filtering transactions. Wallet: $selectedWallet, Range: $selectedRange"
+        )
         val startTime = System.currentTimeMillis()
         var pemasukan = 0L
         var pengeluaran = 0L
@@ -101,6 +106,7 @@ fun RiwayatScreen(
                 calendar.set(Calendar.MILLISECOND, 999)
                 endDateFilter = calendar.time
             }
+
             "7 Hari Terakhir" -> {
                 calendar.add(Calendar.WEEK_OF_YEAR, -1)
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -115,6 +121,7 @@ fun RiwayatScreen(
                 calendar.set(Calendar.MILLISECOND, 999)
                 endDateFilter = calendar.time
             }
+
             "Pilih Bulan" -> {
                 calendar.time = selectedMonth.time
                 calendar.set(Calendar.DAY_OF_MONTH, 1)
@@ -123,13 +130,17 @@ fun RiwayatScreen(
                 calendar.set(Calendar.SECOND, 0)
                 calendar.set(Calendar.MILLISECOND, 0)
                 startDateFilter = calendar.time
-                calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+                calendar.set(
+                    Calendar.DAY_OF_MONTH,
+                    calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+                )
                 calendar.set(Calendar.HOUR_OF_DAY, 23)
                 calendar.set(Calendar.MINUTE, 59)
                 calendar.set(Calendar.SECOND, 59)
                 calendar.set(Calendar.MILLISECOND, 999)
                 endDateFilter = calendar.time
             }
+
             "Pilih Tanggal" -> {
                 calendar.time = startDate.time
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -144,6 +155,7 @@ fun RiwayatScreen(
                 calendar.set(Calendar.MILLISECOND, 999)
                 endDateFilter = calendar.time
             }
+
             else -> {
                 calendar.set(Calendar.DAY_OF_MONTH, 1)
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -160,18 +172,19 @@ fun RiwayatScreen(
         transactions.forEach { transaction ->
             val transactionDate = transaction.date ?: return@forEach
             val matchesWallet = selectedWallet == "Semua" || transaction.type == selectedWallet
-            val matchesDate = !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
+            val matchesDate =
+                !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
             if (matchesWallet && matchesDate) {
                 filtered.add(transaction)
                 if (transaction.category == "Pemasukan") {
-                    pemasukan += transaction.amount
+                    pemasukan += transaction.amount.toLong()
                 } else {
-                    pengeluaran += transaction.amount
+                    pengeluaran += transaction.amount.toLong()
                 }
             }
 
             // Hitung saldo per dompet
-            val amount = transaction.amount
+            val amount = transaction.amount.toLong()
             when (transaction.type) {
                 "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
                 "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
@@ -186,10 +199,20 @@ fun RiwayatScreen(
         saldoNonTunai = nonTunai
         totalSaldo = tunai + tabungan + nonTunai
         filteredTransactions = filtered.sortedByDescending { it.date }
-        Log.d("RiwayatScreen", "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms")
+        Log.d(
+            "RiwayatScreen",
+            "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms"
+        )
     }
 
-    LaunchedEffect(selectedWallet, selectedRange, selectedMonth.timeInMillis, startDate.timeInMillis, endDate.timeInMillis, transactions) {
+    LaunchedEffect(
+        selectedWallet,
+        selectedRange,
+        selectedMonth.timeInMillis,
+        startDate.timeInMillis,
+        endDate.timeInMillis,
+        transactions
+    ) {
         isLoading = true
         try {
             filterTransactions()
@@ -421,7 +444,8 @@ fun RiwayatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(White)
-            .padding(24.dp),
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Total Saldo
@@ -565,7 +589,9 @@ fun RiwayatScreen(
                             color = Navy
                         )
                         Text(
-                            text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan)}",
+                            text = "Rp ${
+                                NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan)
+                            }",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Navy
                         )
@@ -581,7 +607,10 @@ fun RiwayatScreen(
                             color = Navy
                         )
                         Text(
-                            text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPengeluaran)}",
+                            text = "Rp ${
+                                NumberFormat.getNumberInstance(Locale("id"))
+                                    .format(totalPengeluaran)
+                            }",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Navy
                         )
@@ -603,7 +632,10 @@ fun RiwayatScreen(
                             color = Navy
                         )
                         Text(
-                            text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan - totalPengeluaran)}",
+                            text = "Rp ${
+                                NumberFormat.getNumberInstance(Locale("id"))
+                                    .format(totalPemasukan - totalPengeluaran)
+                            }",
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (totalPemasukan - totalPengeluaran >= 0) Navy else ErrorRed
                         )
@@ -615,7 +647,6 @@ fun RiwayatScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f) // Memastikan Card memanjang mengisi ruang yang tersedia
                     .padding(bottom = 24.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
@@ -627,14 +658,14 @@ fun RiwayatScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(24.dp)
+                        .wrapContentHeight(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
                         text = "Riwayat",
                         style = MaterialTheme.typography.headlineMedium,
                         color = Navy,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
+                        modifier = Modifier.fillMaxWidth()
                     )
 
                     if (filteredTransactions.isEmpty()) {
@@ -645,23 +676,23 @@ fun RiwayatScreen(
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         )
                     } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f) // Memastikan LazyColumn memanjang
-                        ) {
-                            items(filteredTransactions) { transaction ->
-                                val isLocal = transaction.id.startsWith("local_")
-                                TransactionItem(
-                                    transaction = transaction,
-                                    isLocal = isLocal,
-                                    onClick = {
-                                        Log.d("RiwayatScreen", "Navigating to DetailTransaksi with ID: ${transaction.id}")
-                                        navController.navigate(Screen.DetailTransaksi.createRoute(transaction.id))
-                                    }
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
+                        filteredTransactions.forEach { transaction ->
+                            val isLocal = transaction.id.startsWith("local_")
+                            TransactionItem(
+                                transaction = transaction,
+                                isLocal = isLocal,
+                                onClick = {
+                                    Log.d(
+                                        "RiwayatScreen",
+                                        "Navigating to DetailTransaksi with ID: ${transaction.id}"
+                                    )
+                                    navController.navigate(
+                                        Screen.DetailTransaksi.createRoute(
+                                            transaction.id
+                                        )
+                                    )
+                                }
+                            )
                         }
                     }
                 }
