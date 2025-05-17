@@ -2,6 +2,7 @@ package com.example.savvy.ui.riwayat
 
 import android.app.DatePickerDialog
 import android.util.Log
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,8 +18,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.savvy.data.Screen
@@ -29,6 +39,8 @@ import com.google.firebase.auth.FirebaseAuth
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
 @Composable
 fun RiwayatScreen(
@@ -72,7 +84,26 @@ fun RiwayatScreen(
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
-    // Hitung saldo dan filter transaksi
+    // State untuk pie chart
+    val categoryData = remember { mutableStateMapOf<String, Pair<Int, Long>>() }
+    var totalChartAmount by rememberSaveable { mutableLongStateOf(0L) }
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var selectedPercentage by remember { mutableStateOf<Float?>(null) }
+
+    // Warna untuk pie chart
+    val categoryColors = mapOf(
+        "Pemasukan" to Color(0xFF4CAF50), // Hijau untuk pemasukan
+        "Makanan" to Color(0xFF6256D1),
+        "Transportasi" to Color(0xFF83E46F),
+        "Hiburan" to Color(0xFF4894FF),
+        "Pendidikan" to Color(0xFFFFD300),
+        "Tagihan" to Color(0xFFFF4A4A),
+        "Kesehatan" to Color(0xFF9DCFFF),
+        "Belanja" to Color(0xFFFF458A),
+        "Uang Keluar" to Color(0xFF76E7E7)
+    )
+
+    // Hitung saldo, filter transaksi, dan data pie chart
     fun filterTransactions() {
         Log.d(
             "RiwayatScreen",
@@ -84,6 +115,7 @@ fun RiwayatScreen(
         var tunai = 0L
         var tabungan = 0L
         var nonTunai = 0L
+        val categoryMap = mutableMapOf<String, Pair<Int, Long>>()
 
         val calendar = Calendar.getInstance()
         val currentDate = calendar.time
@@ -176,10 +208,17 @@ fun RiwayatScreen(
                 !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
             if (matchesWallet && matchesDate) {
                 filtered.add(transaction)
+                val amount = transaction.amount.toLong()
                 if (transaction.category == "Pemasukan") {
-                    pemasukan += transaction.amount.toLong()
+                    pemasukan += amount
+                    // Tambahkan Pemasukan ke pie chart
+                    val currentData = categoryMap["Pemasukan"] ?: Pair(0, 0L)
+                    categoryMap["Pemasukan"] = Pair(currentData.first + 1, currentData.second + amount)
                 } else {
-                    pengeluaran += transaction.amount.toLong()
+                    pengeluaran += amount
+                    // Tambahkan kategori pengeluaran ke pie chart
+                    val currentData = categoryMap[transaction.category] ?: Pair(0, 0L)
+                    categoryMap[transaction.category] = Pair(currentData.first + 1, currentData.second + amount)
                 }
             }
 
@@ -199,9 +238,13 @@ fun RiwayatScreen(
         saldoNonTunai = nonTunai
         totalSaldo = tunai + tabungan + nonTunai
         filteredTransactions = filtered.sortedByDescending { it.date }
+        categoryData.clear()
+        categoryData.putAll(categoryMap)
+        totalChartAmount = pemasukan + pengeluaran
         Log.d(
             "RiwayatScreen",
-            "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms"
+            "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms, " +
+                    "Pie chart data: $categoryMap, Total: $totalChartAmount"
         )
     }
 
@@ -639,6 +682,129 @@ fun RiwayatScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (totalPemasukan - totalPengeluaran >= 0) Navy else ErrorRed
                         )
+                    }
+                }
+            }
+
+            // Pie Chart
+            if (totalChartAmount > 0) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Pie Chart
+                        Canvas(
+                            modifier = Modifier
+                                .size(150.dp)
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            if (event.type == PointerEventType.Press) {
+                                                val offset = event.changes.first().position
+                                                // Hitung posisi klik relatif terhadap pusat pie chart
+                                                val centerX = size.width / 2f
+                                                val centerY = size.height / 2f
+                                                val dx = offset.x - centerX
+                                                val dy = offset.y - centerY
+
+                                                // Hitung jarak dari pusat untuk memastikan klik berada di dalam pie chart
+                                                val distance = sqrt(dx * dx + dy * dy)
+                                                val radius = size.width / 2f
+                                                val innerRadius = radius - 40f // Lebar stroke adalah 80f
+
+                                                if (distance in innerRadius..radius) {
+                                                    // Hitung sudut dari posisi klik
+                                                    var angle = atan2(dy, dx) * 180 / Math.PI
+                                                    if (angle < 0) angle += 360
+
+                                                    // Tentukan segmen yang diklik berdasarkan sudut
+                                                    var startAngle = 0f
+                                                    var selected: String? = null
+                                                    var percentage: Float? = null
+
+                                                    categoryData.forEach { (category, data) ->
+                                                        val sweepAngle = (data.second.toFloat() / totalChartAmount.toFloat()) * 360f
+                                                        if (angle >= startAngle && angle < startAngle + sweepAngle) {
+                                                            selected = category
+                                                            percentage = (data.second.toFloat() / totalChartAmount.toFloat()) * 100f
+                                                        }
+                                                        startAngle += sweepAngle
+                                                    }
+
+                                                    selectedCategory = selected
+                                                    selectedPercentage = percentage
+                                                } else {
+                                                    // Jika klik di luar area pie chart, hapus informasi
+                                                    selectedCategory = null
+                                                    selectedPercentage = null
+                                                }
+                                                event.changes.forEach { it.consume() }
+                                            }
+                                        }
+                                    }
+                                }
+                        ) {
+                            var startAngle = 0f
+                            categoryData.forEach { (category, data) ->
+                                val sweepAngle = (data.second.toFloat() / totalChartAmount.toFloat()) * 360f
+                                val isSelected = category == selectedCategory
+                                drawArc(
+                                    color = categoryColors[category] ?: Color.Gray,
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepAngle,
+                                    useCenter = false,
+                                    topLeft = Offset(0f, 0f),
+                                    size = Size(size.width, size.height),
+                                    style = Stroke(width = if (isSelected) 100f else 80f) // Segmen yang dipilih lebih tebal
+                                )
+                                startAngle += sweepAngle
+                            }
+                        }
+
+                        // Tampilkan detail di tengah pie chart
+                        Column(
+                            modifier = Modifier
+                                .width(100.dp), // Batasi lebar teks
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            if (selectedCategory != null && selectedPercentage != null) {
+                                Text(
+                                    text = selectedCategory!!,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Navy,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = "${String.format("%.1f", selectedPercentage)}%",
+                                    fontSize = 12.sp,
+                                    color = Navy,
+                                    textAlign = TextAlign.Center
+                                )
+                            } else {
+                                Text(
+                                    text = "Ketuk untuk\nmelihat detail",
+                                    fontSize = 12.sp,
+                                    color = Shadow,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
