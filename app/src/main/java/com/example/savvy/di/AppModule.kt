@@ -46,14 +46,14 @@ object AppModule {
         return AppRepository(localTransactionDao)
     }
 
-    @Provides
-    @Singleton
-    fun provideRiwayatViewModel(
-        localTransactionDao: LocalTransactionDao,
-        uploader: SupabaseStorageUploader,
-        appRepository: AppRepository,
-        @ApplicationContext context: Context
-    ): RiwayatViewModel {
-        return RiwayatViewModel(localTransactionDao, uploader, appRepository, context)
-    }
+//    @Provides
+//    @Singleton
+//    fun provideRiwayatViewModel(
+//        localTransactionDao: LocalTransactionDao,
+//        uploader: SupabaseStorageUploader,
+//        appRepository: AppRepository,
+//        @ApplicationContext context: Context
+//    ): RiwayatViewModel {
+//        return RiwayatViewModel(localTransactionDao, uploader, appRepository, context)
+//    }
 }

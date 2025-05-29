@@ -37,113 +37,123 @@ class RiwayatViewModel @Inject constructor(
         Log.d("RiwayatViewModel", "ViewModel initialized")
         monitorNetworkStatus()
         viewModelScope.launch {
+            Log.d("RiwayatViewModel", "Calling onUserLogin from init")
             appRepository.onUserLogin()
         }
     }
 
-    val transactions: StateFlow<List<Transaction>> = flow {
-        Log.d("RiwayatViewModel", "Fetching transactions")
-        val user = auth.currentUser ?: run {
-            Log.w("RiwayatViewModel", "No authenticated user")
-            emit(emptyList())
+    private val localTransactionsFlow: Flow<List<Transaction>> = auth.currentUser?.uid?.let { userId ->
+        localTransactionDao.getAllTransactions(userId)
+            .map { localTransactionList ->
+                localTransactionList.map { local ->
+                    Transaction(
+                        id = local.firestoreId ?: "local_${local.id}",
+                        userId = local.userId,
+                        type = local.type,
+                        amount = local.amount,
+                        category = local.category,
+                        note = local.note,
+                        date = local.date,
+                        imageUrl = local.imageUrl,
+                        imageUri = local.imageUri,
+                        walletId = local.walletId ?: ""
+                    )
+                }
+            }
+    } ?: flowOf(emptyList<Transaction>())
+
+    private val firestoreTransactionsFlow: Flow<List<Transaction>> = flow {
+        val user = auth.currentUser
+        if (user == null) {
+            emit(emptyList<Transaction>())
             return@flow
         }
         try {
-            // Fetch local transactions
-            val localTransactionsFlow = localTransactionDao.getAllTransactions(user.uid)
-            val localTransactions = localTransactionsFlow.first().map { local ->
-                Log.d("RiwayatViewModel", "Local transaction: $local, imageUri: ${local.imageUri}, firestoreId: ${local.firestoreId}")
-                Transaction(
-                    id = local.firestoreId ?: "local_${local.id}",
-                    userId = local.userId,
-                    type = local.type,
-                    amount = local.amount,
-                    category = local.category,
-                    note = local.note,
-                    date = local.date,
-                    imageUrl = null, // Ignore imageUrl
-                    imageUri = local.imageUri,
-                    walletId = local.walletId ?: ""
-                )
+            val querySnapshot = db.collection("transactions")
+                .whereEqualTo("userId", user.uid)
+                .get()
+                .await()
+            val firestoreList = querySnapshot.documents.mapNotNull { doc ->
+                doc.toObject(Transaction::class.java)?.copy(id = doc.id)
             }
-
-            // Fetch Firestore transactions
-            val firestoreTransactions = try {
-                db.collection("transactions")
-                    .whereEqualTo("userId", user.uid)
-                    .get()
-                    .await()
-                    .documents
-                    .mapNotNull { doc ->
-                        doc.toObject(Transaction::class.java)?.copy(id = doc.id, imageUrl = null)
-                    }
-            } catch (e: Exception) {
-                Log.e("RiwayatViewModel", "Failed to fetch Firestore transactions: $e")
-                emptyList()
-            }
-
-            // Merge transactions using a map to avoid duplicates
-            val transactionMap = mutableMapOf<String, Transaction>()
-            for (localTx in localTransactions) {
-                // Use firestoreId if available, otherwise use composite key
-                val key = if (localTx.id.startsWith("local_")) {
-                    "${localTx.userId}_${localTx.type}_${localTx.amount}_${localTx.category}_${localTx.note}_${localTx.date?.time}"
-                } else {
-                    localTx.id
-                }
-                transactionMap[key] = transactionMap[key]?.let { existing ->
-                    existing.copy(
-                        id = localTx.id, // Prioritize Firestore ID
-                        imageUri = localTx.imageUri ?: existing.imageUri
-                    )
-                } ?: localTx
-            }
-
-            for (firestoreTx in firestoreTransactions) {
-                val key = firestoreTx.id
-                transactionMap[key] = transactionMap[key]?.let { existing ->
-                    firestoreTx.copy(
-                        id = firestoreTx.id,
-                        imageUri = existing.imageUri // Preserve local imageUri
-                    )
-                } ?: firestoreTx
-            }
-
-            val combined = transactionMap.values
-                .sortedByDescending { it.date }
-            Log.d("RiwayatViewModel", "Emitting ${combined.size} transactions")
-            emit(combined)
+            emit(firestoreList)
         } catch (e: Exception) {
-            Log.e("RiwayatViewModel", "Error fetching transactions: $e")
-            emit(emptyList())
+            Log.e("RiwayatViewModel", "Firestore fetch error: $e")
+            emit(emptyList<Transaction>())
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+
+    val transactions: StateFlow<List<Transaction>> = combine(
+        localTransactionsFlow,
+        firestoreTransactionsFlow
+    ) { localTxsFromRoom, firestoreTxs ->
+        Log.i("RiwayatViewModel", "Combining data: ${localTxsFromRoom.size} local, ${firestoreTxs.size} Firestore.")
+        val transactionMap = mutableMapOf<String, Transaction>()
+
+        firestoreTxs.forEach { firestoreTx ->
+            if (firestoreTx.id.isNotBlank()) {
+                transactionMap[firestoreTx.id] = firestoreTx
+            }
+        }
+
+        localTxsFromRoom.forEach { mappedLocalTx ->
+            val key = mappedLocalTx.id
+            if (key.isBlank()) {
+                return@forEach
+            }
+
+            val existingTransactionInMap = transactionMap[key]
+            if (existingTransactionInMap != null) {
+                transactionMap[key] = existingTransactionInMap.copy(
+                    imageUri = mappedLocalTx.imageUri ?: existingTransactionInMap.imageUri,
+                    imageUrl = existingTransactionInMap.imageUrl ?: mappedLocalTx.imageUrl,
+                    type = mappedLocalTx.type,
+                    amount = mappedLocalTx.amount,
+                    category = mappedLocalTx.category,
+                    note = mappedLocalTx.note,
+                    date = mappedLocalTx.date,
+                    walletId = mappedLocalTx.walletId
+                )
+            } else {
+                transactionMap[key] = mappedLocalTx
+            }
+        }
+        transactionMap.values.sortedByDescending { it.date }
+    }.catch { e ->
+        Log.e("RiwayatViewModel", "Combine operator error: $e")
+        emit(emptyList<Transaction>())
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList<Transaction>()
+    )
 
     private fun monitorNetworkStatus() {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                Log.d("RiwayatViewModel", "Network available, attempting to sync local transactions")
+                Log.d("RiwayatViewModel", "Network available, attempting sync.")
                 viewModelScope.launch {
                     syncLocalTransactions()
                 }
             }
-
             override fun onLost(network: Network) {
-                Log.d("RiwayatViewModel", "Network lost")
+                Log.d("RiwayatViewModel", "Network lost.")
             }
         }
-
         val networkRequest = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
-
-        connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
-
-        viewModelScope.launch {
-            viewModelScope.coroutineContext.job.invokeOnCompletion {
+        try {
+            connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+        } catch (e: SecurityException) {
+            Log.e("RiwayatViewModel", "Network callback permission issue.", e)
+        }
+        viewModelScope.coroutineContext.job.invokeOnCompletion {
+            try {
                 connectivityManager.unregisterNetworkCallback(networkCallback)
-                Log.d("RiwayatViewModel", "Unregistered network callback")
+            } catch (e: IllegalArgumentException) {
+                Log.w("RiwayatViewModel", "Network callback already unregistered.")
             }
         }
     }
@@ -153,77 +163,68 @@ class RiwayatViewModel @Inject constructor(
         val unsyncedTransactions = try {
             localTransactionDao.getUnsyncedTransactionsSync()
         } catch (e: Exception) {
-            Log.e("RiwayatViewModel", "Error fetching unsynced transactions: $e")
+            Log.e("RiwayatViewModel", "Sync: Error fetching unsynced: $e")
             emptyList()
         }
 
         if (unsyncedTransactions.isEmpty()) {
-            Log.d("RiwayatViewModel", "No unsynced transactions to sync")
+            Log.d("RiwayatViewModel", "Sync: No unsynced transactions.")
             return
         }
+        Log.i("RiwayatViewModel", "Sync: Found ${unsyncedTransactions.size} unsynced transactions.")
 
-        Log.d("RiwayatViewModel", "Starting sync for ${unsyncedTransactions.size} unsynced transactions")
         for (localTransaction in unsyncedTransactions) {
+            if (localTransaction.firestoreId != null && localTransaction.isSynced) {
+                continue
+            }
             try {
-                // Check for duplicates based on key properties
-                val existingFirestore = db.collection("transactions")
-                    .whereEqualTo("userId", localTransaction.userId)
-                    .whereEqualTo("type", localTransaction.type)
-                    .whereEqualTo("amount", localTransaction.amount)
-                    .whereEqualTo("category", localTransaction.category)
-                    .whereEqualTo("note", localTransaction.note)
-                    .whereEqualTo("date", localTransaction.date)
-                    .get()
-                    .await()
-                    .documents
-                    .firstOrNull()
+                var firestoreCompatibleImageUrl: String? = localTransaction.imageUrl
 
-                if (existingFirestore != null) {
-                    // Transaction exists in Firestore, update Room
-                    val firestoreId = existingFirestore.id
-                    localTransactionDao.update(
-                        localTransaction.copy(
-                            isSynced = true,
-                            firestoreId = firestoreId,
-                            imageUrl = null // Ignore imageUrl
-                        )
-                    )
-                    Log.d("RiwayatViewModel", "Found duplicate in Firestore, updated local transaction ID: ${localTransaction.id}, imageUri: ${localTransaction.imageUri}")
-                    continue
+                if (localTransaction.imageUri != null && firestoreCompatibleImageUrl.isNullOrBlank()) {
+                    val imageFile = File(localTransaction.imageUri!!)
+                    if (imageFile.exists()) {
+                        val destinationFileName = "images/${System.currentTimeMillis()}_${imageFile.name}"
+                        firestoreCompatibleImageUrl = withContext(Dispatchers.IO) {
+                            uploader.uploadImage(imageFile, destinationFileName)
+                        }
+                    }
                 }
 
-                // Save to Firestore without image
-                val transaction = Transaction(
+                val firestoreTransaction = Transaction(
+                    userId = localTransaction.userId,
+                    walletId = localTransaction.walletId ?: "",
                     type = localTransaction.type,
                     amount = localTransaction.amount,
                     category = localTransaction.category,
                     note = localTransaction.note,
                     date = localTransaction.date,
-                    userId = localTransaction.userId,
-                    imageUrl = null,
-                    imageUri = null, // Firestore doesn't store imageUri
-                    walletId = localTransaction.walletId ?: ""
+                    imageUrl = firestoreCompatibleImageUrl,
+                    imageUri = null
                 )
+                var finalFirestoreId = localTransaction.firestoreId
 
-                val documentReference = db.collection("transactions")
-                    .add(transaction)
-                    .await()
-                Log.d("RiwayatViewModel", "Synced transaction to Firestore with ID: ${documentReference.id}")
-
-                // Update Room, preserve imageUri
+                if (finalFirestoreId.isNullOrBlank()) {
+                    val documentReference = db.collection("transactions")
+                        .add(firestoreTransaction)
+                        .await()
+                    finalFirestoreId = documentReference.id
+                } else {
+                    db.collection("transactions").document(finalFirestoreId)
+                        .set(firestoreTransaction)
+                        .await()
+                }
                 localTransactionDao.update(
                     localTransaction.copy(
                         isSynced = true,
-                        firestoreId = documentReference.id,
-                        imageUrl = null
+                        firestoreId = finalFirestoreId,
+                        imageUrl = firestoreCompatibleImageUrl
                     )
                 )
-                Log.d("RiwayatViewModel", "Marked local transaction ID: ${localTransaction.id} as synced, imageUri: ${localTransaction.imageUri}")
             } catch (e: Exception) {
-                Log.e("RiwayatViewModel", "Failed to sync transaction ID ${localTransaction.id}: $e")
+                Log.e("RiwayatViewModel", "Sync: Failed for local TX ID ${localTransaction.id}: $e", e)
             }
         }
-        Log.d("RiwayatViewModel", "Sync completed")
+        Log.i("RiwayatViewModel", "Sync: Process completed.")
     }
 
     suspend fun deleteTransaction(id: String): Result<Unit> {
@@ -231,28 +232,23 @@ class RiwayatViewModel @Inject constructor(
             if (id.startsWith("local_")) {
                 val localId = id.removePrefix("local_").toLongOrNull()
                 if (localId != null) {
+                    val txToDelete = localTransactionDao.getTransactionByLocalId(localId)
+                    txToDelete?.imageUri?.let { File(it).delete() }
                     localTransactionDao.deleteById(localId)
-                    Log.d("RiwayatViewModel", "Deleted local transaction with local ID: $localId")
                 } else {
-                    Log.w("RiwayatViewModel", "Invalid local transaction ID: $id")
-                    return Result.failure(Exception("Invalid local transaction ID"))
+                    return Result.failure(IllegalArgumentException("Invalid local ID format for deletion"))
                 }
             } else {
-                db.collection("transactions")
-                    .document(id)
-                    .delete()
-                    .await()
-                // Also delete from Room if it exists
-                val localTransaction = localTransactionDao.getByFirestoreId(id)
-                if (localTransaction != null) {
-                    localTransactionDao.deleteById(localTransaction.id)
-                    Log.d("RiwayatViewModel", "Deleted local transaction with firestoreId: $id")
+                db.collection("transactions").document(id).delete().await()
+                val localVersion = localTransactionDao.getByFirestoreId(id)
+                if (localVersion != null) {
+                    localVersion.imageUri?.let { File(it).delete() }
+                    localTransactionDao.deleteById(localVersion.id)
                 }
-                Log.d("RiwayatViewModel", "Deleted Firestore transaction with ID: $id")
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("RiwayatViewModel", "Error deleting transaction ID: $id, $e")
+            Log.e("RiwayatViewModel", "Error deleting transaction $id: $e")
             Result.failure(e)
         }
     }
