@@ -1,7 +1,6 @@
 package com.example.savvy.data
 
 import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
@@ -32,4 +31,8 @@ interface LocalTransactionDao {
 
     @Query("SELECT * FROM local_transactions WHERE id = :localId")
     suspend fun getTransactionByLocalId(localId: Long): LocalTransaction?
+
+    // Query baru untuk clientGeneratedId
+    @Query("SELECT * FROM local_transactions WHERE clientGeneratedId = :clientGeneratedId LIMIT 1")
+    suspend fun getByClientGeneratedId(clientGeneratedId: String): LocalTransaction?
 }

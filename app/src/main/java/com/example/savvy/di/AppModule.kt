@@ -25,7 +25,9 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "savvy_database"
-        ).build()
+        )
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides

@@ -9,7 +9,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.savvy.data.LocalTransaction
+import com.example.savvy.data.LocalTransaction // Pastikan import ini ada
 import com.example.savvy.data.LocalTransactionDao
 import com.example.savvy.data.SupabaseStorageUploader
 import com.example.savvy.data.Transaction
@@ -23,12 +23,14 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.util.Date
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
 class TambahTransaksiViewModel @Inject constructor(
     private val uploader: SupabaseStorageUploader,
-    val localTransactionDao: LocalTransactionDao,
+    private val localTransactionDao: LocalTransactionDao, // Diubah menjadi private val
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -38,274 +40,262 @@ class TambahTransaksiViewModel @Inject constructor(
         monitorNetworkStatus()
     }
 
+    // Fungsi yang diminta untuk mengambil LocalTransaction berdasarkan ID Room-nya
+    fun getLocalTransactionByDbId(localId: Long, onResult: (LocalTransaction?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) { // Sebaiknya operasi DB di IO dispatcher
+            val localTx = localTransactionDao.getTransactionByLocalId(localId)
+            withContext(Dispatchers.Main) { // Kembali ke Main thread untuk callback UI
+                onResult(localTx)
+            }
+        }
+    }
+
     fun saveTransaction(
-        transaction: Transaction,
+        transactionInput: Transaction,
         imageUri: Uri?,
         onSuccess: (String?) -> Unit,
         onFailure: (Exception) -> Unit
     ) {
         viewModelScope.launch {
             try {
-                Log.d("TambahTransaksiViewModel", "Saving transaction: $transaction, imageUri: $imageUri")
-                if (transaction.date == null) {
-                    throw IllegalStateException("Transaction date cannot be null")
+                val userId = transactionInput.userId
+                if (userId.isBlank()) {
+                    throw IllegalStateException("UserID cannot be blank for transaction.")
                 }
+                // Pastikan date tidak null, jika bisa null di TransactionInput, berikan default di sini
+                val transactionDate = transactionInput.date ?: Date()
 
                 var localImagePath: String? = null
                 if (imageUri != null) {
-                    // Gunakan direktori files internal untuk penyimpanan persisten
                     val imageDir = File(context.filesDir, "transaction_images")
-                    if (!imageDir.exists()) {
-                        imageDir.mkdirs()
-                        Log.d("TambahTransaksiViewModel", "Created directory: ${imageDir.absolutePath}")
-                    }
+                    if (!imageDir.exists()) imageDir.mkdirs()
                     val file = File(imageDir, "local_image_${System.currentTimeMillis()}.jpg")
                     context.contentResolver.openInputStream(imageUri)?.use { input ->
-                        file.outputStream().use { output ->
-                            input.copyTo(output, bufferSize = 8192)
-                        }
+                        file.outputStream().use { output -> input.copyTo(output) }
                     }
                     localImagePath = file.absolutePath
-                    if (file.exists()) {
-                        Log.d("TambahTransaksiViewModel", "Saved local image at: $localImagePath, size: ${file.length()} bytes")
-                    } else {
-                        Log.w("TambahTransaksiViewModel", "Failed to save local image at: $localImagePath")
-                    }
+                    Log.d("TambahVM", "Saved local image: $localImagePath")
                 }
 
-                // Simpan ke Room terlebih dahulu
+                val clientGeneratedId = UUID.randomUUID().toString()
+
                 val localTransaction = LocalTransaction(
-                    userId = transaction.userId,
-                    type = transaction.type,
-                    amount = transaction.amount,
-                    category = transaction.category,
-                    note = transaction.note,
-                    date = transaction.date,
+                    clientGeneratedId = clientGeneratedId,
+                    userId = userId,
+                    type = transactionInput.type,
+                    amount = transactionInput.amount,
+                    category = transactionInput.category,
+                    note = transactionInput.note,
+                    date = transactionDate,
                     imageUri = localImagePath,
                     imageUrl = null,
                     isSynced = false,
                     firestoreId = null,
-                    walletId = transaction.walletId
+                    walletId = transactionInput.walletId
                 )
-                val localId = localTransactionDao.insert(localTransaction)
-                Log.d("TambahTransaksiViewModel", "Inserted local transaction with ID: $localId, imageUri: $localImagePath")
+                val localDbId = localTransactionDao.insert(localTransaction)
+                Log.d("TambahVM", "Inserted local TX (Room ID: $localDbId, ClientUUID: $clientGeneratedId)")
 
                 if (withContext(Dispatchers.IO) { isNetworkAvailable(context) }) {
-                    Log.d("TambahTransaksiViewModel", "Online mode: Saving to Firestore")
+                    Log.d("TambahVM", "Online mode for ClientUUID: $clientGeneratedId")
+                    var firestoreDocId: String? = null
+                    var cloudImageUrl: String? = null
 
-                    // Cek apakah transaksi sudah ada di Firestore
-                    val existingFirestore = db.collection("transactions")
-                        .whereEqualTo("userId", transaction.userId)
-                        .whereEqualTo("type", transaction.type)
-                        .whereEqualTo("amount", transaction.amount)
-                        .whereEqualTo("category", transaction.category)
-                        .whereEqualTo("note", transaction.note)
-                        .whereEqualTo("date", transaction.date)
-                        .get()
-                        .await()
-                        .documents
-                        .firstOrNull()
+                    val existingDocs = db.collection("transactions")
+                        .whereEqualTo("userId", userId)
+                        .whereEqualTo("clientGeneratedId", clientGeneratedId)
+                        .limit(1).get().await()
 
-                    if (existingFirestore != null) {
-                        // Transaksi sudah ada, perbarui Room
-                        val firestoreId = existingFirestore.id
-                        val imageUrl = existingFirestore.toObject(Transaction::class.java)?.imageUrl
-                        localTransactionDao.update(
-                            localTransaction.copy(
-                                id = localId,
-                                isSynced = true,
-                                firestoreId = firestoreId,
-                                imageUrl = imageUrl
-                            )
-                        )
-                        Log.d("TambahTransaksiViewModel", "Found duplicate in Firestore, updated local transaction ID: $localId")
-                        onSuccess(firestoreId)
-                        return@launch
-                    }
-
-                    // Unggah gambar jika ada
-                    var imageUrl: String? = null
-                    if (localImagePath != null) {
-                        val file = File(localImagePath)
-                        if (file.exists()) {
-                            val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
-                            imageUrl = withContext(Dispatchers.IO) {
-                                uploader.uploadImage(file, destinationFileName)
+                    if (!existingDocs.isEmpty) {
+                        val doc = existingDocs.documents[0]
+                        firestoreDocId = doc.id
+                        cloudImageUrl = doc.getString("imageUrl")
+                        Log.i("TambahVM", "ClientUUID $clientGeneratedId already in Firestore (ID: $firestoreDocId).")
+                        if (localImagePath != null && cloudImageUrl == null) {
+                            val file = File(localImagePath)
+                            if (file.exists()) {
+                                val destName = "images/${System.currentTimeMillis()}_${file.name}"
+                                val uploadedUrl = withContext(Dispatchers.IO) { uploader.uploadImage(file, destName) }
+                                if (uploadedUrl != null) {
+                                    cloudImageUrl = uploadedUrl
+                                    db.collection("transactions").document(firestoreDocId)
+                                        .update("imageUrl", cloudImageUrl).await()
+                                }
                             }
-                            Log.d("TambahTransaksiViewModel", "Uploaded image URL: $imageUrl")
-                        } else {
-                            Log.w("TambahTransaksiViewModel", "Image file not found for upload: $localImagePath")
                         }
+                    } else {
+                        Log.d("TambahVM", "ClientUUID $clientGeneratedId not in Firestore. Creating new doc.")
+                        if (localImagePath != null) {
+                            val file = File(localImagePath)
+                            if (file.exists()) {
+                                val destName = "images/${System.currentTimeMillis()}_${file.name}"
+                                cloudImageUrl = withContext(Dispatchers.IO) { uploader.uploadImage(file, destName) }
+                            }
+                        }
+                        val firestoreTx = Transaction(
+                            clientGeneratedId = clientGeneratedId,
+                            userId = userId,
+                            type = transactionInput.type,
+                            amount = transactionInput.amount,
+                            category = transactionInput.category,
+                            note = transactionInput.note,
+                            date = transactionDate,
+                            imageUrl = cloudImageUrl,
+                            walletId = transactionInput.walletId,
+                            imageUri = null
+                        )
+                        val docRef = db.collection("transactions").add(firestoreTx).await()
+                        firestoreDocId = docRef.id
+                        Log.i("TambahVM", "Saved to Firestore (ID: $firestoreDocId) for ClientUUID: $clientGeneratedId")
                     }
 
-                    // Simpan ke Firestore
-                    val transactionToSave = transaction.copy(imageUrl = imageUrl)
-                    val documentRef = db.collection("transactions").add(transactionToSave).await()
-                    Log.d("TambahTransaksiViewModel", "Saved to Firestore with ID: ${documentRef.id}")
-
-                    // Perbarui Room dengan firestoreId dan imageUrl, pertahankan imageUri
                     localTransactionDao.update(
                         localTransaction.copy(
-                            id = localId,
+                            id = localDbId,
                             isSynced = true,
-                            firestoreId = documentRef.id,
-                            imageUrl = imageUrl
+                            firestoreId = firestoreDocId,
+                            imageUrl = cloudImageUrl
                         )
                     )
-                    Log.d("TambahTransaksiViewModel", "Updated local transaction ID: $localId with Firestore ID: ${documentRef.id}, imageUri: $localImagePath")
-                    onSuccess(documentRef.id)
+                    Log.d("TambahVM", "Updated local TX (Room ID: $localDbId). Synced. Firestore ID: $firestoreDocId")
+                    onSuccess(firestoreDocId)
                 } else {
-                    Log.d("TambahTransaksiViewModel", "Offline mode: Transaction saved to Room only, imageUri: $localImagePath")
+                    Log.d("TambahVM", "Offline mode. Saved to Room only (ClientUUID: $clientGeneratedId)")
                     onSuccess(null)
                 }
+
             } catch (e: Exception) {
-                Log.e("TambahTransaksiViewModel", "Error saving transaction: $e")
+                Log.e("TambahVM", "Error saving transaction: $e", e)
                 onFailure(e)
             }
         }
     }
 
     fun updateTransaction(
-        transactionId: String?,
-        localTransactionId: Long?,
-        transaction: Transaction,
-        imageUri: Uri?,
+        existingFirestoreId: String?,
+        existingLocalId: Long?,
+        existingClientGeneratedId: String?,
+        transactionInput: Transaction,
+        newImageUri: Uri?,
+        isImageRemoved: Boolean,
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
         viewModelScope.launch {
             try {
-                Log.d("TambahTransaksiViewModel", "Updating transaction: $transaction, imageUri: $imageUri")
-                if (transaction.date == null) {
-                    throw IllegalStateException("Transaction date cannot be null")
+                Log.d("TambahVM-Update", "Updating TX. FirestoreID: $existingFirestoreId, LocalID: $existingLocalId, ClientUUID: $existingClientGeneratedId, ImgRemoved: $isImageRemoved")
+                val userId = transactionInput.userId
+                if (userId.isBlank()) throw IllegalStateException("UserID cannot be blank.")
+
+                val transactionDate = transactionInput.date ?: Date() // Pastikan non-null
+
+                var currentLocalImagePath: String? = null
+                var finalCloudImageUrl: String? = transactionInput.imageUrl
+
+                if (isImageRemoved) {
+                    finalCloudImageUrl = null
+                    // Hapus gambar lama dari Supabase jika ada existingImageUrlFromDb (perlu URL-nya)
+                    // Logika penghapusan file Supabase bisa ditambahkan di sini jika diperlukan
+                } else if (newImageUri != null) {
+                    val imageDir = File(context.filesDir, "transaction_images")
+                    if (!imageDir.exists()) imageDir.mkdirs()
+                    val file = File(imageDir, "local_update_${System.currentTimeMillis()}.jpg")
+                    context.contentResolver.openInputStream(newImageUri)?.use { input ->
+                        file.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    currentLocalImagePath = file.absolutePath
+                    Log.d("TambahVM-Update", "Saved new/updated local image: $currentLocalImagePath")
                 }
 
-                var localImagePath: String? = null
-                if (imageUri != null) {
-                    // Gunakan direktori files internal untuk penyimpanan persisten
-                    val imageDir = File(context.filesDir, "transaction_images")
-                    if (!imageDir.exists()) {
-                        imageDir.mkdirs()
-                        Log.d("TambahTransaksiViewModel", "Created directory: ${imageDir.absolutePath}")
-                    }
-                    val file = File(imageDir, "local_image_${System.currentTimeMillis()}.jpg")
-                    context.contentResolver.openInputStream(imageUri)?.use { input ->
-                        file.outputStream().use { output ->
-                            input.copyTo(output, bufferSize = 8192)
-                        }
-                    }
-                    localImagePath = file.absolutePath
-                    if (file.exists()) {
-                        Log.d("TambahTransaksiViewModel", "Saved local image at: $localImagePath, size: ${file.length()} bytes")
-                    } else {
-                        Log.w("TambahTransaksiViewModel", "Failed to save local image at: $localImagePath")
-                    }
-                }
+                val clientGeneratedIdToUse = existingClientGeneratedId.takeIf { !it.isNullOrBlank() } ?: UUID.randomUUID().toString()
+                var finalFirestoreIdForUpdate = existingFirestoreId
 
                 if (withContext(Dispatchers.IO) { isNetworkAvailable(context) }) {
-                    Log.d("TambahTransaksiViewModel", "Online mode: Updating Firestore")
-                    var imageUrl: String? = transaction.imageUrl
-                    if (imageUri != null && localImagePath != null) {
-                        val file = File(localImagePath)
-                        val destinationFileName = "images/${System.currentTimeMillis()}_image.jpg"
-                        imageUrl = withContext(Dispatchers.IO) {
-                            uploader.uploadImage(file, destinationFileName)
+                    Log.d("TambahVM-Update", "Online mode for update.")
+                    if (currentLocalImagePath != null) {
+                        val file = File(currentLocalImagePath)
+                        if (file.exists()) {
+                            val destName = "images/update_${System.currentTimeMillis()}_${file.name}"
+                            finalCloudImageUrl = withContext(Dispatchers.IO) { uploader.uploadImage(file, destName) }
+                            Log.d("TambahVM-Update", "Uploaded updated image. Cloud URL: $finalCloudImageUrl")
+                            // Jika gambar lama ada dan berbeda, mungkin perlu dihapus dari Supabase
                         }
-                        Log.d("TambahTransaksiViewModel", "Uploaded updated image URL: $imageUrl")
                     }
 
-                    val transactionToSave = transaction.copy(imageUrl = imageUrl)
-                    if (transactionId != null) {
-                        db.collection("transactions")
-                            .document(transactionId)
-                            .set(transactionToSave)
-                            .await()
-                        Log.d("TambahTransaksiViewModel", "Updated Firestore with ID: $transactionId")
-                    }
+                    val firestoreTxData = transactionInput.copy(
+                        clientGeneratedId = clientGeneratedIdToUse,
+                        imageUrl = finalCloudImageUrl,
+                        imageUri = null,
+                        date = transactionDate,
+                        id = "" // id tidak dikirim untuk set/add di Firestore
+                    )
 
-                    // Update atau simpan ke Room
-                    if (localTransactionId != null) {
-                        val localTransaction = LocalTransaction(
-                            id = localTransactionId,
-                            type = transaction.type,
-                            amount = transaction.amount,
-                            category = transaction.category,
-                            note = transaction.note,
-                            date = transaction.date,
-                            userId = transaction.userId,
-                            imageUri = localImagePath ?: transaction.imageUri,
-                            imageUrl = imageUrl,
-                            isSynced = true,
-                            firestoreId = transactionId,
-                            walletId = transaction.walletId
-                        )
-                        localTransactionDao.update(localTransaction)
-                        Log.d("TambahTransaksiViewModel", "Updated local transaction ID: $localTransactionId, imageUri: ${localTransaction.imageUri}")
+                    if (!finalFirestoreIdForUpdate.isNullOrBlank()) {
+                        db.collection("transactions").document(finalFirestoreIdForUpdate).set(firestoreTxData).await()
+                        Log.i("TambahVM-Update", "Updated Firestore doc ID: $finalFirestoreIdForUpdate")
                     } else {
-                        val localTransaction = LocalTransaction(
-                            userId = transaction.userId,
-                            type = transaction.type,
-                            amount = transaction.amount,
-                            category = transaction.category,
-                            note = transaction.note,
-                            date = transaction.date,
-                            imageUri = localImagePath,
-                            imageUrl = imageUrl,
-                            isSynced = true,
-                            firestoreId = transactionId,
-                            walletId = transaction.walletId
-                        )
-                        localTransactionDao.insert(localTransaction)
-                        Log.d("TambahTransaksiViewModel", "Inserted new local transaction for Firestore ID: $transactionId, imageUri: $localImagePath")
-                    }
-                    onSuccess()
-                } else {
-                    Log.d("TambahTransaksiViewModel", "Offline mode: Updating Room")
-                    if (localTransactionId != null) {
-                        val localTransaction = LocalTransaction(
-                            id = localTransactionId,
-                            type = transaction.type,
-                            amount = transaction.amount,
-                            category = transaction.category,
-                            note = transaction.note,
-                            date = transaction.date,
-                            userId = transaction.userId,
-                            imageUri = localImagePath ?: transaction.imageUri,
-                            imageUrl = null,
-                            isSynced = false,
-                            firestoreId = transactionId,
-                            walletId = transaction.walletId
-                        )
-                        localTransactionDao.update(localTransaction)
-                        Log.d("TambahTransaksiViewModel", "Updated local transaction ID: $localTransactionId in offline mode, imageUri: ${localTransaction.imageUri}")
-                        onSuccess()
-                    } else {
-                        val newLocalTransaction = LocalTransaction(
-                            userId = transaction.userId,
-                            type = transaction.type,
-                            amount = transaction.amount,
-                            category = transaction.category,
-                            note = transaction.note,
-                            date = transaction.date,
-                            imageUri = localImagePath,
-                            imageUrl = null,
-                            isSynced = false,
-                            firestoreId = null,
-                            walletId = transaction.walletId
-                        )
-                        localTransactionDao.insert(newLocalTransaction)
-                        Log.d("TambahTransaksiViewModel", "Inserted new local transaction in offline mode, imageUri: $localImagePath")
-                        onSuccess()
+                        // Jika tidak ada firestoreId, coba cari berdasarkan clientGeneratedId
+                        Log.w("TambahVM-Update", "existingFirestoreId is null. Checking ClientUUID $clientGeneratedIdToUse in Firestore.")
+                        val querySnapshot = db.collection("transactions")
+                            .whereEqualTo("userId", userId)
+                            .whereEqualTo("clientGeneratedId", clientGeneratedIdToUse)
+                            .limit(1).get().await()
+
+                        if(!querySnapshot.isEmpty) {
+                            finalFirestoreIdForUpdate = querySnapshot.documents[0].id
+                            db.collection("transactions").document(finalFirestoreIdForUpdate!!).set(firestoreTxData).await()
+                            Log.i("TambahVM-Update", "Found and updated by clientUUID. Firestore doc ID: $finalFirestoreIdForUpdate")
+                        } else {
+                            // Jika benar-benar tidak ada, ini jadi seperti Save Baru (seharusnya jarang terjadi di flow update)
+                            val newDocRef = db.collection("transactions").add(firestoreTxData).await()
+                            finalFirestoreIdForUpdate = newDocRef.id
+                            Log.i("TambahVM-Update", "No existing Firestore doc found by ID or ClientUUID. Created new: ${newDocRef.id}")
+                        }
                     }
                 }
+
+                // Update atau Insert ke Room
+                val localTxToUpdate = existingLocalId?.let { localTransactionDao.getTransactionByLocalId(it) }
+                    ?: if (!finalFirestoreIdForUpdate.isNullOrBlank()) localTransactionDao.getByFirestoreId(finalFirestoreIdForUpdate)
+                    else if (clientGeneratedIdToUse.isNotBlank()) localTransactionDao.getByClientGeneratedId(clientGeneratedIdToUse)
+                    else null
+
+
+                if (localTxToUpdate != null) {
+                    localTransactionDao.update(
+                        localTxToUpdate.copy(
+                            type = transactionInput.type, amount = transactionInput.amount, category = transactionInput.category,
+                            note = transactionInput.note, date = transactionDate, walletId = transactionInput.walletId,
+                            imageUri = currentLocalImagePath ?: (if(isImageRemoved) null else localTxToUpdate.imageUri),
+                            imageUrl = finalCloudImageUrl, // Update dengan URL cloud terbaru
+                            isSynced = withContext(Dispatchers.IO) { isNetworkAvailable(context) }, // Set status sync
+                            firestoreId = finalFirestoreIdForUpdate ?: localTxToUpdate.firestoreId, // Update firestoreId
+                            clientGeneratedId = clientGeneratedIdToUse // Pastikan clientGeneratedId konsisten
+                        )
+                    )
+                    Log.d("TambahVM-Update", "Updated local TX (Room ID: ${localTxToUpdate.id})")
+                } else {
+                    val newLocal = LocalTransaction(
+                        clientGeneratedId = clientGeneratedIdToUse, userId = userId, type = transactionInput.type,
+                        amount = transactionInput.amount, category = transactionInput.category, note = transactionInput.note,
+                        date = transactionDate, imageUri = currentLocalImagePath, imageUrl = finalCloudImageUrl,
+                        isSynced = withContext(Dispatchers.IO) { isNetworkAvailable(context) },
+                        firestoreId = finalFirestoreIdForUpdate, walletId = transactionInput.walletId
+                    )
+                    localTransactionDao.insert(newLocal)
+                    Log.d("TambahVM-Update", "No existing local TX found for update, inserted new one. Firestore ID: $finalFirestoreIdForUpdate")
+                }
+                onSuccess()
+
             } catch (e: Exception) {
-                Log.e("TambahTransaksiViewModel", "Error updating transaction: $e")
+                Log.e("TambahVM-Update", "Error updating transaction: $e", e)
                 onFailure(e)
             }
         }
     }
 
     private suspend fun isNetworkAvailable(context: Context): Boolean {
+        // ... (implementasi sama)
         return withTimeoutOrNull(1000L) {
             val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val network = connectivityManager.activeNetwork ?: return@withTimeoutOrNull false
@@ -315,24 +305,32 @@ class TambahTransaksiViewModel @Inject constructor(
     }
 
     private fun monitorNetworkStatus() {
+        // ... (implementasi sama)
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 Log.d("TambahTransaksiViewModel", "Network available")
-                // Sinkronisasi ditangani oleh RiwayatViewModel
+            }
+            override fun onLost(network: Network) { // Tambahkan onLost jika belum ada
+                Log.d("TambahTransaksiViewModel", "Network lost")
             }
         }
-
         val networkRequest = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
-
-        connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
-
-        viewModelScope.launch {
+        try {
+            connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+        } catch (e: SecurityException) {
+            Log.e("TambahVM", "Network callback permission issue.", e)
+        }
+        viewModelScope.launch { // Pastikan ini ada jika belum
             viewModelScope.coroutineContext.job.invokeOnCompletion {
-                connectivityManager.unregisterNetworkCallback(networkCallback)
-                Log.d("TambahTransaksiViewModel", "Unregistered network callback")
+                try {
+                    connectivityManager.unregisterNetworkCallback(networkCallback)
+                    Log.d("TambahVM", "Unregistered network callback")
+                } catch (e: Exception) {
+                    Log.w("TambahVM", "Error unregistering network callback: ${e.message}")
+                }
             }
         }
     }
