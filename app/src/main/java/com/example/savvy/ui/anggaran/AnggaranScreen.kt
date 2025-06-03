@@ -2,7 +2,7 @@ package com.example.savvy.ui.anggaran
 
 import android.app.DatePickerDialog
 import android.widget.Toast
-import androidx.compose.foundation.Image // Import Image
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,7 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource // Import painterResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.example.savvy.R // Import R
+import com.example.savvy.R
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.Teal
@@ -71,8 +71,18 @@ fun AnggaranScreen(
         amount = ""
         val cal = Calendar.getInstance()
         cal.set(Calendar.DAY_OF_MONTH, 1)
+        // Pastikan startDate diatur ke awal hari
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
         startDate = cal.time
         cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
+        // Pastikan endDate diatur ke akhir hari
+        cal.set(Calendar.HOUR_OF_DAY, 23)
+        cal.set(Calendar.MINUTE, 59)
+        cal.set(Calendar.SECOND, 59)
+        cal.set(Calendar.MILLISECOND, 999) // Tambahkan milidetik untuk mencakup penuh
         endDate = cal.time
     }
 
@@ -155,12 +165,14 @@ fun AnggaranScreen(
             context,
             { _, year, month, dayOfMonth ->
                 val cal = Calendar.getInstance().apply { set(year, month, dayOfMonth, 0, 0, 0) }
+                cal.set(Calendar.MILLISECOND, 0) // Pastikan awal hari
                 startDate = cal.time
                 if (endDate.before(startDate)) {
                     val endCal = Calendar.getInstance().apply { time = startDate }
                     endCal.set(Calendar.HOUR_OF_DAY, 23)
                     endCal.set(Calendar.MINUTE, 59)
                     endCal.set(Calendar.SECOND, 59)
+                    endCal.set(Calendar.MILLISECOND, 999) // Pastikan akhir hari
                     endDate = endCal.time
                 }
             },
@@ -173,6 +185,7 @@ fun AnggaranScreen(
             context,
             { _, year, month, dayOfMonth ->
                 val cal = Calendar.getInstance().apply { set(year, month, dayOfMonth, 23, 59, 59) }
+                cal.set(Calendar.MILLISECOND, 999) // Pastikan akhir hari
                 endDate = cal.time
             },
             endDialogCalendar.get(Calendar.YEAR),

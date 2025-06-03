@@ -9,7 +9,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.savvy.data.LocalTransaction // Pastikan import ini ada
+import com.example.savvy.data.LocalTransaction
 import com.example.savvy.data.LocalTransactionDao
 import com.example.savvy.data.SupabaseStorageUploader
 import com.example.savvy.data.Transaction
@@ -30,7 +30,7 @@ import javax.inject.Inject
 @HiltViewModel
 class TambahTransaksiViewModel @Inject constructor(
     private val uploader: SupabaseStorageUploader,
-    private val localTransactionDao: LocalTransactionDao, // Diubah menjadi private val
+    private val localTransactionDao: LocalTransactionDao,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -40,11 +40,10 @@ class TambahTransaksiViewModel @Inject constructor(
         monitorNetworkStatus()
     }
 
-    // Fungsi yang diminta untuk mengambil LocalTransaction berdasarkan ID Room-nya
     fun getLocalTransactionByDbId(localId: Long, onResult: (LocalTransaction?) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) { // Sebaiknya operasi DB di IO dispatcher
+        viewModelScope.launch(Dispatchers.IO) {
             val localTx = localTransactionDao.getTransactionByLocalId(localId)
-            withContext(Dispatchers.Main) { // Kembali ke Main thread untuk callback UI
+            withContext(Dispatchers.Main) {
                 onResult(localTx)
             }
         }
@@ -62,7 +61,6 @@ class TambahTransaksiViewModel @Inject constructor(
                 if (userId.isBlank()) {
                     throw IllegalStateException("UserID cannot be blank for transaction.")
                 }
-                // Pastikan date tidak null, jika bisa null di TransactionInput, berikan default di sini
                 val transactionDate = transactionInput.date ?: Date()
 
                 var localImagePath: String? = null
@@ -77,10 +75,15 @@ class TambahTransaksiViewModel @Inject constructor(
                     Log.d("TambahVM", "Saved local image: $localImagePath")
                 }
 
-                val clientGeneratedId = UUID.randomUUID().toString()
+                // Gunakan clientGeneratedId dari input jika ada (misal dari edit flow) atau generate baru
+                val clientGeneratedIdToUse = if (transactionInput.clientGeneratedId.isNotBlank()) {
+                    transactionInput.clientGeneratedId
+                } else {
+                    UUID.randomUUID().toString()
+                }
 
                 val localTransaction = LocalTransaction(
-                    clientGeneratedId = clientGeneratedId,
+                    clientGeneratedId = clientGeneratedIdToUse, // PASTIKAN MENGGUNAKAN INI
                     userId = userId,
                     type = transactionInput.type,
                     amount = transactionInput.amount,
@@ -94,24 +97,25 @@ class TambahTransaksiViewModel @Inject constructor(
                     walletId = transactionInput.walletId
                 )
                 val localDbId = localTransactionDao.insert(localTransaction)
-                Log.d("TambahVM", "Inserted local TX (Room ID: $localDbId, ClientUUID: $clientGeneratedId)")
+                Log.d("TambahVM", "Inserted local TX (Room ID: $localDbId, ClientUUID: $clientGeneratedIdToUse)")
 
                 if (withContext(Dispatchers.IO) { isNetworkAvailable(context) }) {
-                    Log.d("TambahVM", "Online mode for ClientUUID: $clientGeneratedId")
+                    Log.d("TambahVM", "Online mode for ClientUUID: $clientGeneratedIdToUse")
                     var firestoreDocId: String? = null
                     var cloudImageUrl: String? = null
 
                     val existingDocs = db.collection("transactions")
                         .whereEqualTo("userId", userId)
-                        .whereEqualTo("clientGeneratedId", clientGeneratedId)
+                        .whereEqualTo("clientGeneratedId", clientGeneratedIdToUse)
                         .limit(1).get().await()
 
                     if (!existingDocs.isEmpty) {
                         val doc = existingDocs.documents[0]
                         firestoreDocId = doc.id
                         cloudImageUrl = doc.getString("imageUrl")
-                        Log.i("TambahVM", "ClientUUID $clientGeneratedId already in Firestore (ID: $firestoreDocId).")
-                        if (localImagePath != null && cloudImageUrl == null) {
+                        Log.i("TambahVM", "ClientUUID $clientGeneratedIdToUse already in Firestore (ID: $firestoreDocId).")
+
+                        if (localImagePath != null && cloudImageUrl.isNullOrBlank()) {
                             val file = File(localImagePath)
                             if (file.exists()) {
                                 val destName = "images/${System.currentTimeMillis()}_${file.name}"
@@ -123,8 +127,18 @@ class TambahTransaksiViewModel @Inject constructor(
                                 }
                             }
                         }
+                        // Perbarui dokumen yang sudah ada di Firestore
+                        val firestoreTx = transactionInput.copy(
+                            id = firestoreDocId, // Penting: sertakan ID Firestore
+                            clientGeneratedId = clientGeneratedIdToUse,
+                            imageUrl = cloudImageUrl,
+                            imageUri = null
+                        )
+                        db.collection("transactions").document(firestoreDocId).set(firestoreTx).await()
+                        Log.i("TambahVM", "Dokumen Firestore diperbarui (ID: $firestoreDocId) untuk ClientUUID: $clientGeneratedIdToUse")
+
                     } else {
-                        Log.d("TambahVM", "ClientUUID $clientGeneratedId not in Firestore. Creating new doc.")
+                        Log.d("TambahVM", "ClientUUID $clientGeneratedIdToUse not in Firestore. Creating new doc.")
                         if (localImagePath != null) {
                             val file = File(localImagePath)
                             if (file.exists()) {
@@ -132,21 +146,14 @@ class TambahTransaksiViewModel @Inject constructor(
                                 cloudImageUrl = withContext(Dispatchers.IO) { uploader.uploadImage(file, destName) }
                             }
                         }
-                        val firestoreTx = Transaction(
-                            clientGeneratedId = clientGeneratedId,
-                            userId = userId,
-                            type = transactionInput.type,
-                            amount = transactionInput.amount,
-                            category = transactionInput.category,
-                            note = transactionInput.note,
-                            date = transactionDate,
+                        val firestoreTx = transactionInput.copy(
+                            clientGeneratedId = clientGeneratedIdToUse,
                             imageUrl = cloudImageUrl,
-                            walletId = transactionInput.walletId,
                             imageUri = null
                         )
                         val docRef = db.collection("transactions").add(firestoreTx).await()
                         firestoreDocId = docRef.id
-                        Log.i("TambahVM", "Saved to Firestore (ID: $firestoreDocId) for ClientUUID: $clientGeneratedId")
+                        Log.i("TambahVM", "Saved to Firestore (ID: $firestoreDocId) for ClientUUID: $clientGeneratedIdToUse")
                     }
 
                     localTransactionDao.update(
@@ -160,7 +167,7 @@ class TambahTransaksiViewModel @Inject constructor(
                     Log.d("TambahVM", "Updated local TX (Room ID: $localDbId). Synced. Firestore ID: $firestoreDocId")
                     onSuccess(firestoreDocId)
                 } else {
-                    Log.d("TambahVM", "Offline mode. Saved to Room only (ClientUUID: $clientGeneratedId)")
+                    Log.d("TambahVM", "Offline mode. Saved to Room only (ClientUUID: $clientGeneratedIdToUse)")
                     onSuccess(null)
                 }
 
@@ -187,15 +194,13 @@ class TambahTransaksiViewModel @Inject constructor(
                 val userId = transactionInput.userId
                 if (userId.isBlank()) throw IllegalStateException("UserID cannot be blank.")
 
-                val transactionDate = transactionInput.date ?: Date() // Pastikan non-null
+                val transactionDate = transactionInput.date ?: Date()
 
                 var currentLocalImagePath: String? = null
                 var finalCloudImageUrl: String? = transactionInput.imageUrl
 
                 if (isImageRemoved) {
                     finalCloudImageUrl = null
-                    // Hapus gambar lama dari Supabase jika ada existingImageUrlFromDb (perlu URL-nya)
-                    // Logika penghapusan file Supabase bisa ditambahkan di sini jika diperlukan
                 } else if (newImageUri != null) {
                     val imageDir = File(context.filesDir, "transaction_images")
                     if (!imageDir.exists()) imageDir.mkdirs()
@@ -218,7 +223,6 @@ class TambahTransaksiViewModel @Inject constructor(
                             val destName = "images/update_${System.currentTimeMillis()}_${file.name}"
                             finalCloudImageUrl = withContext(Dispatchers.IO) { uploader.uploadImage(file, destName) }
                             Log.d("TambahVM-Update", "Uploaded updated image. Cloud URL: $finalCloudImageUrl")
-                            // Jika gambar lama ada dan berbeda, mungkin perlu dihapus dari Supabase
                         }
                     }
 
@@ -227,14 +231,13 @@ class TambahTransaksiViewModel @Inject constructor(
                         imageUrl = finalCloudImageUrl,
                         imageUri = null,
                         date = transactionDate,
-                        id = "" // id tidak dikirim untuk set/add di Firestore
+                        id = ""
                     )
 
                     if (!finalFirestoreIdForUpdate.isNullOrBlank()) {
                         db.collection("transactions").document(finalFirestoreIdForUpdate).set(firestoreTxData).await()
                         Log.i("TambahVM-Update", "Updated Firestore doc ID: $finalFirestoreIdForUpdate")
                     } else {
-                        // Jika tidak ada firestoreId, coba cari berdasarkan clientGeneratedId
                         Log.w("TambahVM-Update", "existingFirestoreId is null. Checking ClientUUID $clientGeneratedIdToUse in Firestore.")
                         val querySnapshot = db.collection("transactions")
                             .whereEqualTo("userId", userId)
@@ -246,7 +249,6 @@ class TambahTransaksiViewModel @Inject constructor(
                             db.collection("transactions").document(finalFirestoreIdForUpdate!!).set(firestoreTxData).await()
                             Log.i("TambahVM-Update", "Found and updated by clientUUID. Firestore doc ID: $finalFirestoreIdForUpdate")
                         } else {
-                            // Jika benar-benar tidak ada, ini jadi seperti Save Baru (seharusnya jarang terjadi di flow update)
                             val newDocRef = db.collection("transactions").add(firestoreTxData).await()
                             finalFirestoreIdForUpdate = newDocRef.id
                             Log.i("TambahVM-Update", "No existing Firestore doc found by ID or ClientUUID. Created new: ${newDocRef.id}")
@@ -254,7 +256,6 @@ class TambahTransaksiViewModel @Inject constructor(
                     }
                 }
 
-                // Update atau Insert ke Room
                 val localTxToUpdate = existingLocalId?.let { localTransactionDao.getTransactionByLocalId(it) }
                     ?: if (!finalFirestoreIdForUpdate.isNullOrBlank()) localTransactionDao.getByFirestoreId(finalFirestoreIdForUpdate)
                     else if (clientGeneratedIdToUse.isNotBlank()) localTransactionDao.getByClientGeneratedId(clientGeneratedIdToUse)
@@ -267,10 +268,10 @@ class TambahTransaksiViewModel @Inject constructor(
                             type = transactionInput.type, amount = transactionInput.amount, category = transactionInput.category,
                             note = transactionInput.note, date = transactionDate, walletId = transactionInput.walletId,
                             imageUri = currentLocalImagePath ?: (if(isImageRemoved) null else localTxToUpdate.imageUri),
-                            imageUrl = finalCloudImageUrl, // Update dengan URL cloud terbaru
-                            isSynced = withContext(Dispatchers.IO) { isNetworkAvailable(context) }, // Set status sync
-                            firestoreId = finalFirestoreIdForUpdate ?: localTxToUpdate.firestoreId, // Update firestoreId
-                            clientGeneratedId = clientGeneratedIdToUse // Pastikan clientGeneratedId konsisten
+                            imageUrl = finalCloudImageUrl,
+                            isSynced = withContext(Dispatchers.IO) { isNetworkAvailable(context) },
+                            firestoreId = finalFirestoreIdForUpdate ?: localTxToUpdate.firestoreId,
+                            clientGeneratedId = clientGeneratedIdToUse
                         )
                     )
                     Log.d("TambahVM-Update", "Updated local TX (Room ID: ${localTxToUpdate.id})")
@@ -295,7 +296,6 @@ class TambahTransaksiViewModel @Inject constructor(
     }
 
     private suspend fun isNetworkAvailable(context: Context): Boolean {
-        // ... (implementasi sama)
         return withTimeoutOrNull(1000L) {
             val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val network = connectivityManager.activeNetwork ?: return@withTimeoutOrNull false
@@ -305,13 +305,12 @@ class TambahTransaksiViewModel @Inject constructor(
     }
 
     private fun monitorNetworkStatus() {
-        // ... (implementasi sama)
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 Log.d("TambahTransaksiViewModel", "Network available")
             }
-            override fun onLost(network: Network) { // Tambahkan onLost jika belum ada
+            override fun onLost(network: Network) {
                 Log.d("TambahTransaksiViewModel", "Network lost")
             }
         }
@@ -323,7 +322,7 @@ class TambahTransaksiViewModel @Inject constructor(
         } catch (e: SecurityException) {
             Log.e("TambahVM", "Network callback permission issue.", e)
         }
-        viewModelScope.launch { // Pastikan ini ada jika belum
+        viewModelScope.launch {
             viewModelScope.coroutineContext.job.invokeOnCompletion {
                 try {
                     connectivityManager.unregisterNetworkCallback(networkCallback)

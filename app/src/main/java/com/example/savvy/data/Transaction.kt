@@ -5,7 +5,7 @@ import java.util.Date
 
 data class Transaction(
     val id: String = "", // Akan diisi Firestore Document ID
-    val clientGeneratedId: String? = null, // Nullable untuk mengakomodasi data lama di Firestore
+    val clientGeneratedId: String = "", // PASTIKAN INI NON-NULLABLE DAN DEFAULT KOSONG
     val userId: String = "",
     val walletId: String = "",
     val type: String = "", // Ini adalah tipe/nama dompet

@@ -9,9 +9,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.savvy.data.AppRepository
+import com.example.savvy.data.LocalTransaction
 import com.example.savvy.data.LocalTransactionDao
 import com.example.savvy.data.SupabaseStorageUploader
-import com.example.savvy.data.Transaction // Pastikan Transaction diimpor
+import com.example.savvy.data.Transaction
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,9 +23,11 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex // IMPORT INI
+import kotlinx.coroutines.sync.withLock // IMPORT INI
 import java.io.File
-import java.util.Date // Pastikan Date diimpor
-import java.util.UUID // Pastikan UUID diimpor
+import java.util.Date
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -37,6 +40,7 @@ class RiwayatViewModel @Inject constructor(
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val syncMutex = Mutex() // DEKLARASIKAN MUTEX
 
     init {
         Log.d("RiwayatViewModel", "ViewModel initialized")
@@ -50,10 +54,10 @@ class RiwayatViewModel @Inject constructor(
     private val localTransactionsFlow: Flow<List<Transaction>> = auth.currentUser?.uid?.let { userId ->
         localTransactionDao.getAllTransactions(userId)
             .map { localTransactionList ->
-                localTransactionList.map { local -> // local adalah LocalTransaction
+                localTransactionList.map { local ->
                     Transaction(
-                        id = local.firestoreId ?: "local_${local.id}", // Ini adalah ID untuk UI
-                        clientGeneratedId = local.clientGeneratedId,    // Ambil dari LocalTransaction
+                        id = local.firestoreId ?: "local_${local.id}",
+                        clientGeneratedId = local.clientGeneratedId,
                         userId = local.userId,
                         type = local.type,
                         amount = local.amount,
@@ -62,7 +66,7 @@ class RiwayatViewModel @Inject constructor(
                         date = local.date,
                         imageUrl = local.imageUrl,
                         imageUri = local.imageUri,
-                        walletId = local.walletId ?: local.type // Fallback jika walletId null
+                        walletId = local.walletId ?: local.type
                     )
                 }
             }
@@ -70,19 +74,21 @@ class RiwayatViewModel @Inject constructor(
 
     private val firestoreTransactionsFlow: Flow<List<Transaction>> = flow {
         val user = auth.currentUser
-        if (user == null) { /* ... emit empty ... */ return@flow }
+        if (user == null) {
+            emit(emptyList())
+            return@flow
+        }
         try {
             val querySnapshot = db.collection("transactions")
                 .whereEqualTo("userId", user.uid)
                 .get()
                 .await()
             val firestoreList = querySnapshot.documents.mapNotNull { doc ->
-                // Penting: Bagaimana Transaction dibuat dari dokumen Firestore
                 val data = doc.data
                 if (data == null) return@mapNotNull null
                 Transaction(
                     id = doc.id,
-                    clientGeneratedId = data["clientGeneratedId"] as? String, // Bisa null
+                    clientGeneratedId = data["clientGeneratedId"] as? String ?: "",
                     userId = data["userId"] as? String ?: user.uid,
                     walletId = data["walletId"] as? String ?: (data["type"] as? String ?: ""),
                     type = data["type"] as? String ?: "",
@@ -95,7 +101,10 @@ class RiwayatViewModel @Inject constructor(
                 )
             }
             emit(firestoreList)
-        } catch (e: Exception) { /* ... log error, emit empty ... */ }
+        } catch (e: Exception) {
+            Log.e("RiwayatViewModel", "Error fetching Firestore transactions: $e", e)
+            emit(emptyList())
+        }
     }
 
     val transactions: StateFlow<List<Transaction>> = combine(
@@ -103,47 +112,45 @@ class RiwayatViewModel @Inject constructor(
         firestoreTransactionsFlow
     ) { localTxsFromRoom, firestoreTxs ->
         Log.i("RiwayatVM-Combine", "Combining: ${localTxsFromRoom.size} local, ${firestoreTxs.size} Firestore.")
-        val transactionMap = mutableMapOf<String, Transaction>() // Kunci bisa clientGeneratedId atau firestoreId
+        val combinedTransactions = mutableMapOf<String, Transaction>()
 
-        // 1. Proses Firestore transactions, prioritaskan clientGeneratedId sebagai kunci jika ada
         firestoreTxs.forEach { firestoreTx ->
-            val key = firestoreTx.clientGeneratedId.takeIf { !it.isNullOrBlank() } ?: firestoreTx.id
+            val key = firestoreTx.clientGeneratedId.takeIf { it.isNotBlank() } ?: firestoreTx.id
             if (key.isNotBlank()) {
-                transactionMap[key] = firestoreTx
+                combinedTransactions[key] = firestoreTx
             } else {
-                Log.w("RiwayatVM-Combine", "Firestore TX has blank key (clientGenId & id): $firestoreTx")
+                Log.w("RiwayatVM-Combine", "Firestore TX memiliki kunci (clientGenId & id) kosong, dilewati: $firestoreTx")
             }
         }
 
-        // 2. Proses local transactions, coba cocokkan dengan yang sudah ada di map
-        localTxsFromRoom.forEach { mappedLocalTx ->
-            // mappedLocalTx.clientGeneratedId dari Room dijamin tidak blank karena default UUID
-            val key = mappedLocalTx.clientGeneratedId!!
+        localTxsFromRoom.forEach { localTx ->
+            val localKey = localTx.clientGeneratedId.takeIf { it.isNotBlank() } ?: localTx.id
+            if (localKey.isBlank()) {
+                Log.e("RiwayatVM-Combine", "Transaksi lokal memiliki clientGeneratedId atau id kosong, dilewati: $localTx")
+                return@forEach
+            }
 
-            val existingInMap = transactionMap[key] // Cari berdasarkan clientGeneratedId
-            if (existingInMap != null) {
-                // Ditemukan! Artinya transaksi ini sudah ada di Firestore.
-                // Kita gunakan versi Firestore (existingInMap) sebagai basis,
-                // tapi kita perbarui dengan info lokal yang mungkin lebih relevan (seperti imageUri).
-                // Pastikan ID yang digunakan adalah Firestore ID.
-                transactionMap[key] = existingInMap.copy(
-                    id = existingInMap.id, // Jaga Firestore ID
-                    imageUri = mappedLocalTx.imageUri ?: existingInMap.imageUri,
-                    // Jika ada field lain yang mungkin berbeda dan ingin diprioritaskan dari lokal:
-                    // note = mappedLocalTx.note, // contoh
-                    // date = mappedLocalTx.date, // contoh
-                    // imageUrl bisa jadi dari mappedLocalTx jika lebih baru (misal baru diupload dan belum ter-reflect di firestoreTxs)
-                    imageUrl = mappedLocalTx.imageUrl ?: existingInMap.imageUrl
+            val existingTxInMap = combinedTransactions[localKey]
+
+            if (existingTxInMap != null) {
+                val updatedTx = existingTxInMap.copy(
+                    id = existingTxInMap.id,
+                    imageUri = localTx.imageUri ?: existingTxInMap.imageUri,
+                    imageUrl = existingTxInMap.imageUrl ?: localTx.imageUrl
                 )
+                combinedTransactions[localKey] = updatedTx
             } else {
-                // Tidak ditemukan di map berdasarkan clientGeneratedId.
-                // Berarti ini transaksi yang hanya ada di lokal (belum sinkron atau gagal sinkron)
-                // atau transaksi dari Firestore yang clientGeneratedId-nya tidak cocok/kosong.
-                // Gunakan mappedLocalTx.id (yang bisa "local_..." atau firestoreId jika sudah di-link parsial) sebagai fallback key.
-                transactionMap[mappedLocalTx.id] = mappedLocalTx
+                combinedTransactions[localKey] = localTx
             }
         }
-        transactionMap.values.sortedByDescending { it.date }
+
+        combinedTransactions.values.map { tx ->
+            if (tx.id.startsWith("local_")) {
+                tx
+            } else {
+                tx.copy(id = tx.id)
+            }
+        }.distinctBy { it.id }.sortedByDescending { it.date }
     }.catch { e ->
         Log.e("RiwayatViewModel", "Combine operator error: $e", e)
         emit(emptyList<Transaction>())
@@ -154,36 +161,44 @@ class RiwayatViewModel @Inject constructor(
     )
 
     private suspend fun syncLocalTransactions() {
-        val user = auth.currentUser ?: run {
-            Log.w("RiwayatVM-Sync", "User null, cannot sync.")
-            return
-        }
-        val unsyncedTransactions = try {
-            localTransactionDao.getUnsyncedTransactionsSync()
-        } catch (e: Exception) {
-            Log.e("RiwayatVM-Sync", "Error fetching unsynced: $e", e)
-            emptyList()
-        }
-
-        if (unsyncedTransactions.isEmpty()) {
-            Log.d("RiwayatVM-Sync", "No unsynced transactions.")
-            return
-        }
-        Log.i("RiwayatVM-Sync", "Found ${unsyncedTransactions.size} unsynced transactions.")
-
-        for (localTx in unsyncedTransactions) {
-            if (localTx.isSynced && !localTx.firestoreId.isNullOrBlank()) {
-                Log.d("RiwayatVM-Sync", "LocalTX ID ${localTx.id} (ClientUUID ${localTx.clientGeneratedId}) already marked synced with FirestoreID ${localTx.firestoreId}. Skipping.")
-                continue
+        // Gunakan Mutex untuk memastikan hanya satu sinkronisasi berjalan pada satu waktu
+        syncMutex.withLock {
+            val user = auth.currentUser ?: run {
+                Log.w("RiwayatVM-Sync", "User null, cannot sync.")
+                return
             }
-            Log.d("RiwayatVM-Sync", "Processing LocalTX ID ${localTx.id}, ClientUUID ${localTx.clientGeneratedId}, FirestoreID: ${localTx.firestoreId}, Synced: ${localTx.isSynced}")
+            // Ambil lagi daftar transaksi yang belum disinkronkan setelah mengunci
+            val unsyncedTransactions = try {
+                localTransactionDao.getUnsyncedTransactionsSync()
+            } catch (e: Exception) {
+                Log.e("RiwayatVM-Sync", "Error fetching unsynced: $e", e)
+                return
+            }
 
-            try {
-                var finalFirestoreId = localTx.firestoreId
-                var cloudImageUrl = localTx.imageUrl
+            if (unsyncedTransactions.isEmpty()) {
+                Log.d("RiwayatVM-Sync", "No unsynced transactions.")
+                return
+            }
+            Log.i("RiwayatVM-Sync", "Found ${unsyncedTransactions.size} unsynced transactions to process.")
 
-                // 1. Cek apakah transaksi dengan clientGeneratedId ini sudah ada di Firestore
-                if (localTx.clientGeneratedId.isNotBlank()) { // Hanya cek jika clientGeneratedId ada
+            for (localTx in unsyncedTransactions) {
+                // Double check status synced di dalam loop, setelah fetching terbaru
+                if (localTx.isSynced && !localTx.firestoreId.isNullOrBlank()) {
+                    Log.d("RiwayatVM-Sync", "LocalTX ID ${localTx.id} (ClientUUID ${localTx.clientGeneratedId}) sudah ditandai sinkron dengan FirestoreID ${localTx.firestoreId}. Dilewati.")
+                    continue
+                }
+                if (localTx.clientGeneratedId.isBlank()) {
+                    Log.e("RiwayatVM-Sync", "LocalTX ID ${localTx.id} memiliki clientGeneratedId kosong, tidak dapat disinkronkan. Mungkin data rusak.")
+                    continue
+                }
+
+                Log.d("RiwayatVM-Sync", "Processing LocalTX ID ${localTx.id}, ClientUUID ${localTx.clientGeneratedId}, FirestoreID: ${localTx.firestoreId}, Synced: ${localTx.isSynced}")
+
+                try {
+                    var finalFirestoreId = localTx.firestoreId
+                    var cloudImageUrl = localTx.imageUrl
+
+                    // 1. Cari dokumen di Firestore berdasarkan clientGeneratedId
                     val existingDocs = db.collection("transactions")
                         .whereEqualTo("userId", user.uid)
                         .whereEqualTo("clientGeneratedId", localTx.clientGeneratedId)
@@ -193,85 +208,111 @@ class RiwayatViewModel @Inject constructor(
 
                     if (!existingDocs.isEmpty) {
                         val doc = existingDocs.documents[0]
-                        finalFirestoreId = doc.id // Dapatkan firestoreId yang sudah ada
-                        if (cloudImageUrl.isNullOrBlank()){ // Jika lokal tidak punya cloudImageUrl
-                            cloudImageUrl = doc.getString("imageUrl") // Coba ambil dari Firestore
-                        }
-                        Log.i("RiwayatVM-Sync", "Found existing Firestore (ID: $finalFirestoreId) for ClientUUID ${localTx.clientGeneratedId} of LocalTX ${localTx.id}.")
-                    }
-                }
+                        finalFirestoreId = doc.id
+                        Log.i("RiwayatVM-Sync", "Ditemukan Firestore (ID: $finalFirestoreId) yang sudah ada untuk ClientUUID ${localTx.clientGeneratedId}.")
 
-
-                // 2. Unggah gambar jika ada URI lokal dan belum ada URL cloud (atau URL cloud tidak valid)
-                if (localTx.imageUri != null && cloudImageUrl.isNullOrBlank()) {
-                    val imageFile = File(localTx.imageUri)
-                    if (imageFile.exists()) {
-                        val destinationFileName = "images/${System.currentTimeMillis()}_${imageFile.name}"
-                        Log.d("RiwayatVM-Sync", "Uploading image for LocalTX ID ${localTx.id} (Path: ${localTx.imageUri})")
-                        cloudImageUrl = withContext(Dispatchers.IO) {
-                            uploader.uploadImage(imageFile, destinationFileName)
+                        // Periksa apakah cloudImageUrl perlu diperbarui dari Firestore atau diunggah
+                        if (cloudImageUrl.isNullOrBlank()) { // Jika lokal tidak punya cloudImageUrl
+                            val firestoreCloudImageUrl = doc.getString("imageUrl")
+                            if (!firestoreCloudImageUrl.isNullOrBlank()) {
+                                cloudImageUrl = firestoreCloudImageUrl // Ambil dari Firestore
+                            }
                         }
-                        Log.d("RiwayatVM-Sync", "Uploaded image for LocalTX ID ${localTx.id}. Cloud URL: $cloudImageUrl")
+
+                        if (localTx.imageUri != null && (cloudImageUrl.isNullOrBlank() || cloudImageUrl == localTx.imageUrl)) { // Unggah jika URI lokal ada & cloud URL tidak valid/sama
+                            val imageFile = File(localTx.imageUri)
+                            if (imageFile.exists()) {
+                                val destinationFileName = "images/${System.currentTimeMillis()}_${imageFile.name}"
+                                Log.d("RiwayatVM-Sync", "Mengunggah gambar untuk LocalTX ID ${localTx.id} (Path: ${localTx.imageUri})")
+                                val uploadedUrl = withContext(Dispatchers.IO) {
+                                    uploader.uploadImage(imageFile, destinationFileName)
+                                }
+                                if (uploadedUrl != null) {
+                                    cloudImageUrl = uploadedUrl
+                                    Log.d("RiwayatVM-Sync", "Gambar diunggah untuk LocalTX ID ${localTx.id}. URL Cloud: $cloudImageUrl")
+                                } else {
+                                    Log.w("RiwayatVM-Sync", "Gagal mengunggah gambar untuk LocalTX ID ${localTx.id}.")
+                                }
+                            } else {
+                                Log.w("RiwayatVM-Sync", "File gambar lokal tidak ditemukan untuk LocalTX ID ${localTx.id}: ${localTx.imageUri}")
+                            }
+                        }
+
+                        // Perbarui dokumen yang sudah ada di Firestore
+                        val transactionForFirestore = Transaction(
+                            id = finalFirestoreId,
+                            clientGeneratedId = localTx.clientGeneratedId,
+                            userId = user.uid,
+                            type = localTx.type,
+                            amount = localTx.amount,
+                            category = localTx.category,
+                            note = localTx.note,
+                            date = localTx.date,
+                            imageUrl = cloudImageUrl,
+                            walletId = localTx.walletId ?: "",
+                            imageUri = null
+                        )
+                        db.collection("transactions").document(finalFirestoreId).set(transactionForFirestore).await()
+                        Log.i("RiwayatVM-Sync", "Dokumen Firestore diperbarui (ID: $finalFirestoreId) untuk ClientUUID: ${localTx.clientGeneratedId}.")
+
                     } else {
-                        Log.w("RiwayatVM-Sync", "Local image file not found for LocalTX ID ${localTx.id}: ${localTx.imageUri}")
+                        // Dokumen TIDAK DITEMUKAN di Firestore berdasarkan clientGeneratedId, buat yang baru
+                        Log.d("RiwayatVM-Sync", "Membuat dokumen Firestore baru untuk LocalTX ID ${localTx.id} (ClientUUID ${localTx.clientGeneratedId}).")
+                        if (localTx.imageUri != null && cloudImageUrl.isNullOrBlank()) {
+                            val imageFile = File(localTx.imageUri)
+                            if (imageFile.exists()) {
+                                val destinationFileName = "images/${System.currentTimeMillis()}_${imageFile.name}"
+                                cloudImageUrl = withContext(Dispatchers.IO) { uploader.uploadImage(imageFile, destinationFileName) }
+                            }
+                        }
+                        val transactionForFirestore = Transaction(
+                            clientGeneratedId = localTx.clientGeneratedId,
+                            userId = user.uid,
+                            type = localTx.type,
+                            amount = localTx.amount,
+                            category = localTx.category,
+                            note = localTx.note,
+                            date = localTx.date,
+                            imageUrl = cloudImageUrl,
+                            walletId = localTx.walletId ?: "",
+                            imageUri = null
+                        )
+                        val docRef = db.collection("transactions").add(transactionForFirestore).await()
+                        finalFirestoreId = docRef.id
+                        Log.i("RiwayatVM-Sync", "Dokumen Firestore baru dibuat (ID: $finalFirestoreId) untuk LocalTX ID ${localTx.id}.")
                     }
-                }
 
-                // 3. Siapkan data untuk disimpan/diupdate ke Firestore
-                val transactionForFirestore = Transaction(
-                    clientGeneratedId = localTx.clientGeneratedId, // WAJIB ADA
-                    userId = user.uid,
-                    type = localTx.type,
-                    amount = localTx.amount,
-                    category = localTx.category,
-                    note = localTx.note,
-                    date = localTx.date,
-                    imageUrl = cloudImageUrl,
-                    walletId = localTx.walletId ?: "",
-                    imageUri = null
-                )
-
-                if (finalFirestoreId.isNullOrBlank()) {
-                    // Buat dokumen BARU di Firestore karena tidak ditemukan berdasarkan clientGeneratedId atau firestoreId lokal
-                    Log.d("RiwayatVM-Sync", "Creating new Firestore doc for LocalTX ID ${localTx.id} (ClientUUID ${localTx.clientGeneratedId}).")
-                    val documentReference = db.collection("transactions").add(transactionForFirestore).await()
-                    finalFirestoreId = documentReference.id
-                    Log.i("RiwayatVM-Sync", "Created new Firestore doc (ID: $finalFirestoreId) for LocalTX ID ${localTx.id}.")
-                } else {
-                    // UPDATE dokumen yang sudah ada di Firestore
-                    Log.d("RiwayatVM-Sync", "Updating existing Firestore doc (ID: $finalFirestoreId) for LocalTX ID ${localTx.id}.")
-                    db.collection("transactions").document(finalFirestoreId).set(transactionForFirestore).await()
-                    Log.i("RiwayatVM-Sync", "Updated Firestore doc (ID: $finalFirestoreId).")
-                }
-
-                // 4. Update LocalTransaction di Room
-                localTransactionDao.update(
-                    localTx.copy(
-                        isSynced = true,
-                        firestoreId = finalFirestoreId,
-                        imageUrl = cloudImageUrl
+                    // 4. Update LocalTransaction di Room dengan status sinkron dan firestoreId yang benar
+                    // PENTING: Lakukan ini di dalam blok try yang sama setelah operasi Firestore sukses
+                    localTransactionDao.update(
+                        localTx.copy(
+                            isSynced = true,
+                            firestoreId = finalFirestoreId,
+                            imageUrl = cloudImageUrl
+                        )
                     )
-                )
-                Log.d("RiwayatVM-Sync", "Marked LocalTX ID ${localTx.id} as synced. Firestore ID: $finalFirestoreId, Cloud Img: $cloudImageUrl")
+                    Log.d("RiwayatVM-Sync", "Menandai LocalTX ID ${localTx.id} sebagai sinkron. ID Firestore: $finalFirestoreId, Gambar Cloud: $cloudImageUrl")
 
-            } catch (e: Exception) {
-                Log.e("RiwayatVM-Sync", "Failed to sync LocalTX ID ${localTx.id}: $e", e)
+                } catch (e: Exception) {
+                    Log.e("RiwayatVM-Sync", "Gagal menyinkronkan LocalTX ID ${localTx.id}: $e", e)
+                    // Jika terjadi kesalahan, JANGAN tandai sebagai synced. Biarkan isSynced = false.
+                }
             }
-        }
-        Log.i("RiwayatViewModel", "Sync: Sync process completed for unsynced transactions.")
+            Log.i("RiwayatViewModel", "Sinkronisasi: Proses sinkronisasi selesai untuk transaksi yang belum disinkronkan.")
+        } // end of withLock
     }
 
     private fun monitorNetworkStatus() {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                Log.d("RiwayatViewModel", "Network available, attempting sync.")
+                Log.d("RiwayatViewModel", "Jaringan tersedia, mencoba sinkronisasi.")
                 viewModelScope.launch {
                     syncLocalTransactions()
                 }
             }
             override fun onLost(network: Network) {
-                Log.d("RiwayatViewModel", "Network lost.")
+                Log.d("RiwayatViewModel", "Jaringan terputus.")
             }
         }
         val networkRequest = NetworkRequest.Builder()
@@ -280,13 +321,13 @@ class RiwayatViewModel @Inject constructor(
         try {
             connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
         } catch (e: SecurityException) {
-            Log.e("RiwayatViewModel", "Network callback permission issue.", e)
+            Log.e("RiwayatViewModel", "Masalah izin panggilan balik jaringan.", e)
         }
         viewModelScope.coroutineContext.job.invokeOnCompletion {
             try {
                 connectivityManager.unregisterNetworkCallback(networkCallback)
             } catch (e: IllegalArgumentException) {
-                Log.w("RiwayatViewModel", "Network callback already unregistered.")
+                Log.w("RiwayatViewModel", "Panggilan balik jaringan sudah tidak terdaftar.")
             }
         }
     }
@@ -299,30 +340,28 @@ class RiwayatViewModel @Inject constructor(
                     val txToDelete = localTransactionDao.getTransactionByLocalId(localId)
                     txToDelete?.imageUri?.let { File(it).delete() }
                     localTransactionDao.deleteById(localId)
-                    Log.d("RiwayatViewModel", "Deleted local-only transaction with local ID: $localId")
+                    Log.d("RiwayatViewModel", "Menghapus transaksi hanya-lokal dengan ID lokal: $localId")
                 } else {
-                    Log.w("RiwayatViewModel", "Invalid local transaction ID format for deletion: $id")
-                    return Result.failure(IllegalArgumentException("Invalid local transaction ID format"))
+                    Log.w("RiwayatViewModel", "Format ID transaksi lokal tidak valid untuk penghapusan: $id")
+                    return Result.failure(IllegalArgumentException("Format ID transaksi lokal tidak valid"))
                 }
             } else { // Ini berarti id adalah Firestore ID
-                // Hapus dari Firestore
                 db.collection("transactions")
                     .document(id)
                     .delete()
                     .await()
-                Log.d("RiwayatViewModel", "Deleted Firestore transaction with ID: $id")
+                Log.d("RiwayatViewModel", "Menghapus transaksi Firestore dengan ID: $id")
 
-                // Hapus juga dari Room jika ada yang berkorespondensi (berdasarkan Firestore ID)
                 val localTransaction = localTransactionDao.getByFirestoreId(id)
                 if (localTransaction != null) {
                     localTransaction.imageUri?.let { File(it).delete() }
-                    localTransactionDao.deleteById(localTransaction.id) // Hapus berdasarkan PrimaryKey Room (localTransaction.id)
-                    Log.d("RiwayatViewModel", "Deleted corresponding local transaction with local ID: ${localTransaction.id} (Firestore ID: $id)")
+                    localTransactionDao.deleteById(localTransaction.id)
+                    Log.d("RiwayatViewModel", "Menghapus transaksi lokal yang sesuai dengan ID lokal: ${localTransaction.id} (Firestore ID: $id)")
                 }
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("RiwayatViewModel", "Error deleting transaction ID: $id, $e")
+            Log.e("RiwayatViewModel", "Gagal menghapus transaksi ID: $id, $e")
             Result.failure(e)
         }
     }
