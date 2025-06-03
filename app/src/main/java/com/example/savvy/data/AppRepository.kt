@@ -236,7 +236,7 @@ class AppRepository @Inject constructor(
                 if (data == null) return@mapNotNull null
                 Transaction(
                     id = doc.id,
-                    clientGeneratedId = data["clientGeneratedId"] as? String ?: "", // PASTIKAN TIDAK NULL DI SINI
+                    clientGeneratedId = data["clientGeneratedId"] as? String ?: "",
                     userId = data["userId"] as? String ?: user.uid,
                     walletId = data["walletId"] as? String ?: (data["type"] as? String ?: ""),
                     type = data["type"] as? String ?: "",
@@ -259,8 +259,11 @@ class AppRepository @Inject constructor(
                     Log.w("AppRepository", "onUserLogin: Firestore TX has blank Firestore ID, skipping: $txFromFirestore")
                     continue
                 }
-                var existingLocal = localTransactionDao.getByFirestoreId(txFromFirestore.id)
+                // Dapatkan LocalTransaction langsung ke val (immutable)
+                val existingLocal = localTransactionDao.getByFirestoreId(txFromFirestore.id)
+
                 if (existingLocal != null) {
+                    // existingLocal sekarang adalah val, smart cast aman
                     val needsUpdate = existingLocal.isSynced != true ||
                             existingLocal.imageUrl != txFromFirestore.imageUrl ||
                             existingLocal.type != txFromFirestore.type ||
@@ -293,12 +296,14 @@ class AppRepository @Inject constructor(
                         Log.d("AppRepository", "onUserLogin: Existing Room TX (LocalID ${existingLocal.id}) for Firestore ID ${txFromFirestore.id} is already up-to-date.")
                     }
                 } else {
-                    var localTxByClientUuid: LocalTransaction? = null
-                    if (txFromFirestore.clientGeneratedId.isNotBlank()) {
-                        localTxByClientUuid = localTransactionDao.getByClientGeneratedId(txFromFirestore.clientGeneratedId)
-                    }
+                    // Dapatkan LocalTransaction langsung ke val (immutable)
+                    val localTxByClientUuid = if (txFromFirestore.clientGeneratedId.isNotBlank()) {
+                        localTransactionDao.getByClientGeneratedId(txFromFirestore.clientGeneratedId)
+                    } else null
+
 
                     if (localTxByClientUuid != null) {
+                        // localTxByClientUuid sekarang adalah val, smart cast aman
                         Log.i("AppRepository", "onUserLogin: Found local TX by ClientUUID ${txFromFirestore.clientGeneratedId} (LocalID ${localTxByClientUuid.id}). Linking with FirestoreID ${txFromFirestore.id}.")
                         localTransactionDao.update(
                             localTxByClientUuid.copy(
@@ -360,26 +365,28 @@ class AppRepository @Inject constructor(
             var alreadyInRoomAndMatchedAnggaran = 0
 
             firestoreAnggaranList.forEach { firestoreAnggaran ->
-                var existingLocal = anggaranDao.getAnggaranByFirestoreId(firestoreAnggaran.id)
-                if (existingLocal != null) {
-                    val localNeedsUpdate = existingLocal.isSynced != true ||
-                            existingLocal.name != firestoreAnggaran.name ||
-                            existingLocal.category != firestoreAnggaran.category ||
-                            existingLocal.amount != firestoreAnggaran.amount ||
-                            (existingLocal.startDate != firestoreAnggaran.startDate && firestoreAnggaran.startDate != null) ||
-                            (existingLocal.endDate != firestoreAnggaran.endDate && firestoreAnggaran.endDate != null) ||
-                            existingLocal.clientGeneratedId != firestoreAnggaran.clientGeneratedId
+                // Dapatkan LocalAnggaran langsung ke val (immutable)
+                val existingLocalAnggaran = anggaranDao.getAnggaranByFirestoreId(firestoreAnggaran.id)
+                if (existingLocalAnggaran != null) {
+                    // existingLocalAnggaran sekarang adalah val, smart cast aman
+                    val localNeedsUpdate = existingLocalAnggaran.isSynced != true ||
+                            existingLocalAnggaran.name != firestoreAnggaran.name ||
+                            existingLocalAnggaran.category != firestoreAnggaran.category ||
+                            existingLocalAnggaran.amount != firestoreAnggaran.amount ||
+                            (existingLocalAnggaran.startDate != firestoreAnggaran.startDate && firestoreAnggaran.startDate != null) ||
+                            (existingLocalAnggaran.endDate != firestoreAnggaran.endDate && firestoreAnggaran.endDate != null) ||
+                            existingLocalAnggaran.clientGeneratedId != firestoreAnggaran.clientGeneratedId
 
                     if(localNeedsUpdate) {
                         anggaranDao.update(
-                            existingLocal.copy(
+                            existingLocalAnggaran.copy( // Gunakan salinan val
                                 name = firestoreAnggaran.name,
                                 category = firestoreAnggaran.category,
                                 amount = firestoreAnggaran.amount,
-                                startDate = firestoreAnggaran.startDate ?: existingLocal.startDate,
-                                endDate = firestoreAnggaran.endDate ?: existingLocal.endDate,
+                                startDate = firestoreAnggaran.startDate ?: existingLocalAnggaran.startDate,
+                                endDate = firestoreAnggaran.endDate ?: existingLocalAnggaran.endDate,
                                 isSynced = true,
-                                clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { existingLocal.clientGeneratedId }
+                                clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { existingLocalAnggaran.clientGeneratedId }
                             )
                         )
                         updatedInRoomAnggaran++
@@ -387,20 +394,23 @@ class AppRepository @Inject constructor(
                         alreadyInRoomAndMatchedAnggaran++
                     }
                 } else {
-                    if (firestoreAnggaran.clientGeneratedId.isNotBlank()) {
-                        existingLocal = anggaranDao.getAnggaranByClientGeneratedId(firestoreAnggaran.clientGeneratedId)
-                    }
-                    if (existingLocal != null) {
+                    // Dapatkan LocalAnggaran langsung ke val (immutable)
+                    val localAnggaranByClientUuid = if (firestoreAnggaran.clientGeneratedId.isNotBlank()) {
+                        anggaranDao.getAnggaranByClientGeneratedId(firestoreAnggaran.clientGeneratedId)
+                    } else null
+
+                    if (localAnggaranByClientUuid != null) {
+                        // localAnggaranByClientUuid sekarang adalah val, smart cast aman
                         anggaranDao.update(
-                            existingLocal.copy(
+                            localAnggaranByClientUuid.copy( // Gunakan salinan val
                                 firestoreId = firestoreAnggaran.id,
                                 isSynced = true,
                                 name = firestoreAnggaran.name,
                                 category = firestoreAnggaran.category,
                                 amount = firestoreAnggaran.amount,
-                                startDate = firestoreAnggaran.startDate ?: existingLocal.startDate,
-                                endDate = firestoreAnggaran.endDate ?: existingLocal.endDate,
-                                clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { existingLocal.clientGeneratedId }
+                                startDate = firestoreAnggaran.startDate ?: localAnggaranByClientUuid.startDate,
+                                endDate = firestoreAnggaran.endDate ?: localAnggaranByClientUuid.endDate,
+                                clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { localAnggaranByClientUuid.clientGeneratedId }
                             )
                         )
                         updatedInRoomAnggaran++
