@@ -1,41 +1,52 @@
 package com.example.savvy.ui.onboarding
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.savvy.R
+// import com.example.savvy.R // R akan digunakan untuk illustrationResId
+import com.example.savvy.ui.theme.Navy
+import com.example.savvy.ui.theme.White
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image // Import Image untuk Logo di TopAppBar
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material3.*
+import androidx.compose.runtime.rememberCoroutineScope
+
+import androidx.compose.ui.res.painterResource // Import untuk painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
+import com.example.savvy.R // Import R
+import com.example.savvy.ui.components.PageIndicator
 import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.theme.*
 import kotlinx.coroutines.launch
 
-// Data class untuk menyimpan informasi slide
+// Data class OnboardingSlideData tetap sama
 data class OnboardingSlideData(
     val illustrationResId: Int,
     val title: String,
     val description: String
 )
 
-// Komponen reusable untuk slide onboarding (Slide 1-3)
 @Composable
 fun OnboardingSlide(
     slideData: OnboardingSlideData,
@@ -44,98 +55,145 @@ fun OnboardingSlide(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFFFFFFF)) // Warna latar belakang putih
+            .background(White) // Menggunakan White dari theme Anda
     ) {
-        // Logo Savvy (posisi x = 42 dp, y = 42 dp dari kiri atas)
-        Image(
-            painter = painterResource(id = R.drawable.logo_savvy_small),
-            contentDescription = "Savvy Logo",
-            modifier = Modifier
-                .absoluteOffset(x = 42.dp, y = 42.dp)
-                .size(120.dp, 40.dp)
-        )
-
-        // Konten utama (ilustrasi, judul, deskripsi)
+        // Logo Savvy DIHAPUS dari sini, akan dipindah ke TopAppBar OnboardingScreen
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Spacer(modifier = Modifier.height(255.dp)) // Gap antara logo dan ilustrasi
+            // Sesuaikan Spacer ini jika perlu setelah logo di TopAppBar ditambahkan
+            Spacer(modifier = Modifier.height(60.dp)) // Memberi ruang jika TopAppBar memakan tempat
 
-            // Ilustrasi (di tengah)
             Image(
                 painter = painterResource(id = slideData.illustrationResId),
                 contentDescription = "${slideData.title} Illustration",
-                modifier = Modifier.size(300.dp)
+                modifier = Modifier
+                    .fillMaxWidth(0.85f) // Bisa sedikit lebih besar
+                    .aspectRatio(1f)
+                    .padding(bottom = 24.dp)
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Judul
             Text(
                 text = slideData.title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.headlineSmall.copy(color = Navy, fontWeight = FontWeight.Bold),
                 textAlign = TextAlign.Center,
-                color = Navy
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Deskripsi
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = slideData.description,
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.bodyMedium.copy(color = Navy.copy(alpha = 0.8f)),
                 textAlign = TextAlign.Center,
-                color = Navy
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
     onNavigateToRegister: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    initialPage: Int = 0 // Parameter baru untuk halaman awal
+    initialPage: Int = 0
 ) {
-    val pagerState = rememberPagerState(pageCount = { 4 }, initialPage = initialPage)
+    val informationalPageCount = 3
+    val totalPageCount = informationalPageCount + 1
+    val pagerState = rememberPagerState(pageCount = { totalPageCount }, initialPage = initialPage)
     val coroutineScope = rememberCoroutineScope()
 
-    // Data untuk masing-masing slide
     val slides = listOf(
-        OnboardingSlideData(
-            illustrationResId = R.drawable.onboarding_1,
-            title = "Atur Keuanganmu dengan Savvy!",
-            description = "Savvy membantu kamu mengelola keuangan pribadi dengan mudah. Mulai dari pencatatan hingga analisis, semua ada di sini!"
-        ),
-        OnboardingSlideData(
-            illustrationResId = R.drawable.onboarding_2,
-            title = "Catat dan Kelompokkan Pengeluaranmu!",
-            description = "Pecahkan keuanganmu dengan fitur multi-dompet dan catat transaksi dengan mudah, manual atau melalui foto struk."
-        ),
-        OnboardingSlideData(
-            illustrationResId = R.drawable.onboarding_3,
-            title = "Pantau dan Rencanakan Keuanganmu!",
-            description = "Lihat tren keuanganmu dengan grafik pie dan line, atur anggaran per kategori, dan ekspor laporan ke PDF kapan saja."
-        )
+        OnboardingSlideData(R.drawable.onboarding_1, "Atur Keuanganmu dengan Savvy!", "Savvy membantu kamu mengelola keuangan pribadi dengan mudah. Mulai dari pencatatan hingga analisis, semua ada di sini!"),
+        OnboardingSlideData(R.drawable.onboarding_2, "Catat dan Kelompokkan Pengeluaranmu!", "Pecahkan keuanganmu dengan fitur multi-dompet dan catat transaksi dengan mudah, manual atau melalui foto struk."),
+        OnboardingSlideData(R.drawable.onboarding_3, "Pantau dan Rencanakan Keuanganmu!", "Lihat tren keuanganmu dengan grafik pie dan line, atur anggaran per kategori, dan ekspor laporan ke PDF kapan saja.")
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
-    ) {
-        // HorizontalPager untuk slide
+    Scaffold(
+        topBar = {
+            TopAppBar( // Menggunakan TopAppBar standar
+                title = { /* Biarkan kosong agar ikon Previous & Logo lebih menonjol */ },
+                navigationIcon = {
+                    if (pagerState.currentPage > 0) {
+                        IconButton(onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                            }
+                        }) {
+                            Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Previous", tint = Navy)
+                        }
+                    } else {
+                        Spacer(Modifier.size(48.dp)) // Placeholder agar logo tetap di kanan jika tombol back tidak ada
+                    }
+                },
+                actions = {
+                    // Logo Savvy di kanan atas (sejajar tombol back)
+                    Image(
+                        painter = painterResource(id = R.drawable.logo_savvy_small),
+                        contentDescription = "Savvy Logo",
+                        modifier = Modifier
+                            .padding(end = 16.dp) // Padding agar tidak terlalu mepet
+                            .size(100.dp, 33.dp)
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = White, // Latar belakang TopAppBar
+                    navigationIconContentColor = Navy,
+                    actionIconContentColor = Navy // Jika ada ikon di actions
+                )
+            )
+        },
+        bottomBar = {
+            if (pagerState.currentPage < informationalPageCount) { // Hanya untuk slide 0, 1, 2
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 32.dp, end = 32.dp, bottom = 40.dp, top = 20.dp), // Padding top ditambah agar lebih ke bawah
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    PageIndicator(
+                        pageCount = informationalPageCount,
+                        currentPage = pagerState.currentPage,
+                        modifier = Modifier.padding(bottom = 28.dp) // Jarak lebih besar ke tombol
+                    )
+
+                    SavvyButton(
+                        text = if (pagerState.currentPage == informationalPageCount - 1) "Start!" else "Next",
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp)) // Jarak antara tombol Next dan Skip dikurangi
+
+                    TextButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(totalPageCount - 1)
+                            }
+                        }
+                    ) {
+                        Text("Skip", style = MaterialTheme.typography.labelMedium, color = Navy.copy(alpha = 0.7f)) // Style lebih kecil
+                    }
+                }
+            } else {
+                // Untuk slide terakhir (OnboardingSlide4), bottom bar ini tidak perlu
+                // Spacer untuk memberi ruang jika OnboardingSlide4 tidak punya padding bawah yang cukup
+                Spacer(modifier = Modifier.height(48.dp)) // Ketinggian yang cukup untuk estetika
+            }
+        },
+        containerColor = White
+    ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+                .padding(innerPadding)
+                .fillMaxSize(),
             userScrollEnabled = false
         ) { page ->
             when (page) {
@@ -148,28 +206,11 @@ fun OnboardingScreen(
                 )
             }
         }
-
-        // Tombol Next untuk Slide 1-3
-        if (pagerState.currentPage < 3) {
-            SavvyButton(
-                text = if (pagerState.currentPage == 2) "Get Started!" else "Next",
-                onClick = {
-                    coroutineScope.launch {
-                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp, vertical = 16.dp)
-                    .height(50.dp),
-                textColor = Navy,
-                backgroundColor = Beige
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-        }
     }
 }
 
+
+// Composable OnboardingSlide4
 @Composable
 fun OnboardingSlide4(
     onNavigateToRegister: () -> Unit,
@@ -180,78 +221,53 @@ fun OnboardingSlide4(
             .fillMaxSize()
             .background(White)
     ) {
-        // Logo dan slogan di tengah layar
+        // Konten Logo di tengah (yang Anda inginkan)
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
+                .fillMaxSize() // Mengisi seluruh ruang Box
+                .padding(bottom = 200.dp), // Beri ruang di bawah untuk tombol-tombol
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center // Pusatkan logo di sisa ruang ini
         ) {
-            // Logo Savvy (kecil, tengah)
             Image(
                 painter = painterResource(id = R.drawable.logo_savvy_onboarding_4),
                 contentDescription = "Savvy Logo",
-                modifier = Modifier
-                    .size(150.dp, 60.78.dp)
+                modifier = Modifier.size(150.dp, 60.78.dp)
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // Tombol dan teks Log in di bagian bawah
+        // Tombol dan teks di bagian bawah
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .padding(16.dp),
+                .align(Alignment.BottomCenter) // Sejajarkan grup ini ke bawah Box
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 48.dp), // Padding dari tepi bawah layar
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Tombol Create Account
             SavvyButton(
                 text = "Create Account",
                 onClick = onNavigateToRegister,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-                    .height(50.dp),
+                modifier = Modifier.fillMaxWidth().height(50.dp),
                 textColor = Navy,
                 backgroundColor = Beige
             )
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Teks "Have an account? Log in" dengan hanya "Log in" yang dapat diklik
             ClickableText(
                 text = buildAnnotatedString {
-                    withStyle(style = SpanStyle(color = Navy)) {
-                        append("Have an account? ")
-                    }
-                    withStyle(
-                        style = SpanStyle(
-                            color = Navy,
-                            textDecoration = TextDecoration.Underline
-                        )
-                    ) {
-                        append("Log in")
-                    }
+                    withStyle(style = SpanStyle(color = Navy)) { append("Have an account? ") }
+                    withStyle(style = SpanStyle(color = Navy, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold)) { append("Log in") }
                 },
-                onClick = { offset: Int ->
+                onClick = { offset ->
                     val loginText = "Log in"
                     val loginStartIndex = "Have an account? ".length
-                    val loginEndIndex = loginStartIndex + loginText.length
-                    if (offset in loginStartIndex until loginEndIndex) {
+                    if (offset in loginStartIndex until (loginStartIndex + loginText.length)) {
                         onNavigateToLogin()
                     }
                 },
                 modifier = Modifier.padding(8.dp),
-                style = LocalTextStyle.current.copy(
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center
-                )
+                style = LocalTextStyle.current.copy(fontSize = 14.sp, textAlign = TextAlign.Center)
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
