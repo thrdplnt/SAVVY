@@ -36,11 +36,11 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.example.savvy.data.LocalTransaction
+import com.example.savvy.data.LocalTransaction // Pastikan ini ada jika TambahTransaksiViewModel menggunakannya
 import com.example.savvy.data.Screen
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.components.SavvyDropdownMenu
-import com.example.savvy.ui.components.SavvyTextField // Pastikan ini diimpor
+import com.example.savvy.ui.components.SavvyTextField
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White
@@ -61,7 +61,7 @@ fun TambahTransaksiScreen(
     val auth = FirebaseAuth.getInstance()
 
     var transactionKind by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("Tunai") } // Ini adalah sumber dana/dompet
+    var type by remember { mutableStateOf("Tunai") }
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
@@ -83,22 +83,24 @@ fun TambahTransaksiScreen(
     var initialFirestoreIdForEdit by remember { mutableStateOf<String?>(null) }
 
     val transactionWalletTypes = listOf("Tunai", "Non-Tunai", "Tabungan")
-    var selectedWalletType by remember { mutableStateOf(type) } // State untuk dropdown dompet
+    var selectedWalletType by remember { mutableStateOf(type) }
 
     val transactionKinds = listOf("Pemasukan", "Pengeluaran")
     val expenseCategories = listOf(
         "Makanan", "Transportasi", "Hiburan", "Pendidikan",
         "Tagihan", "Kesehatan", "Belanja", "Uang Keluar"
     )
+    // Kategori untuk Pemasukan (hanya satu)
+    val incomeCategory = "Pemasukan"
 
     LaunchedEffect(transactionId) {
         if (transactionId == null) {
             isEditMode = false
-            transactionKind = ""
+            transactionKind = "" // Reset jenis transaksi
             type = transactionWalletTypes.firstOrNull() ?: "Tunai"
             selectedWalletType = type
             amount = ""
-            category = ""
+            category = "" // Reset kategori
             note = ""
             date = Date()
             dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date)
@@ -139,7 +141,7 @@ fun TambahTransaksiScreen(
                         initialClientGeneratedIdForEdit = localTx.clientGeneratedId
                         initialFirestoreIdForEdit = localTx.firestoreId
 
-                        transactionKind = if (localTx.category == "Pemasukan") "Pemasukan" else "Pengeluaran"
+                        transactionKind = if (localTx.category == incomeCategory) incomeCategory else "Pengeluaran"
                         type = localTx.type
                         selectedWalletType = localTx.walletId ?: localTx.type
                         amount = localTx.amount.toString()
@@ -172,7 +174,7 @@ fun TambahTransaksiScreen(
                             loadedTransactionForEdit = trans
                             initialClientGeneratedIdForEdit = trans.clientGeneratedId
 
-                            transactionKind = if (trans.category == "Pemasukan") "Pemasukan" else "Pengeluaran"
+                            transactionKind = if (trans.category == incomeCategory) incomeCategory else "Pengeluaran"
                             type = trans.type
                             selectedWalletType = trans.walletId.ifBlank { trans.type }
                             amount = trans.amount.toString()
@@ -229,22 +231,22 @@ fun TambahTransaksiScreen(
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween // Untuk menyeimbangkan jika ada IconButton
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             if (isEditMode) {
-                IconButton(onClick = { navController.popBackStack() }, modifier = Modifier.size(48.dp)) { // Beri ukuran agar konsisten
+                IconButton(onClick = { navController.popBackStack() }, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Default.Close, "Batal", tint = Navy)
                 }
             } else {
-                Spacer(Modifier.size(48.dp)) // Spacer kosong untuk menyeimbangkan
+                Spacer(Modifier.size(48.dp))
             }
             Text(
                 text = if (isEditMode) "Edit Transaksi" else "Tambah Transaksi",
                 fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Navy,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f) // Agar teks mengisi ruang dan bisa di tengah
+                modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.size(48.dp)) // Spacer kosong untuk menyeimbangkan sisi kanan
+            Spacer(Modifier.size(48.dp))
         }
 
         SavvyDropdownMenu(
@@ -253,7 +255,7 @@ fun TambahTransaksiScreen(
             selectedItem = selectedWalletType,
             onItemSelected = {
                 selectedWalletType = it
-                type = it // 'type' di objek Transaction adalah nama dompetnya
+                type = it
             },
             modifier = Modifier.fillMaxWidth()
         )
@@ -264,22 +266,34 @@ fun TambahTransaksiScreen(
             onValueChange = { v -> if (v.all { it.isDigit() }) amount = v },
             label = "Masukkan Jumlah Uang",
             modifier = Modifier.fillMaxWidth(),
-            keyboardType = KeyboardType.Number // Menggunakan parameter KeyboardType
+            keyboardType = KeyboardType.Number
         )
         Spacer(Modifier.height(16.dp))
 
         SavvyDropdownMenu(
-            label = "Pilih Jenis Transaksi", items = transactionKinds, selectedItem = transactionKind,
-            onItemSelected = { transactionKind = it; category = if (it == "Pemasukan") "Pemasukan" else "" },
+            label = "Pilih Jenis Transaksi",
+            items = transactionKinds,
+            selectedItem = transactionKind,
+            onItemSelected = {
+                transactionKind = it
+                if (it == incomeCategory) {
+                    category = incomeCategory // Otomatis set kategori ke "Pemasukan"
+                } else {
+                    // Jika sebelumnya "Pemasukan", reset kategori agar pengguna memilih dari expenseCategories
+                    if (category == incomeCategory) category = ""
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(16.dp))
 
         SavvyDropdownMenu(
             label = "Pilih Kategori",
-            items = if (transactionKind == "Pemasukan") listOf("Pemasukan") else expenseCategories,
-            selectedItem = category, onItemSelected = { category = it }, modifier = Modifier.fillMaxWidth(),
-            enabled = transactionKind != "Pemasukan" || category == "Pemasukan"
+            items = if (transactionKind == incomeCategory) listOf(incomeCategory) else expenseCategories,
+            selectedItem = category,
+            onItemSelected = { category = it },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = transactionKind != incomeCategory // Nonaktifkan jika jenisnya "Pemasukan"
         )
         Spacer(Modifier.height(16.dp))
 
@@ -288,7 +302,7 @@ fun TambahTransaksiScreen(
             onValueChange = { note = it },
             label = "Tulis Catatan",
             modifier = Modifier.fillMaxWidth(),
-            singleLine = false // Izinkan multiple lines untuk catatan
+            singleLine = false
         )
         Spacer(Modifier.height(16.dp))
 
@@ -298,10 +312,10 @@ fun TambahTransaksiScreen(
                 onValueChange = { /* Dikosongkan karena readOnly dan dihandle picker */ },
                 label = "Tanggal (dd/mm/yyyy)",
                 modifier = Modifier.weight(1f),
-                readOnly = true, // Menggunakan parameter baru dari SavvyTextField
-                onClickAction = { datePickerDialog.show() } // Menggunakan parameter baru
+                readOnly = true,
+                onClickAction = { datePickerDialog.show() }
             )
-            IconButton(onClick = { datePickerDialog.show() }) { // Tombol ikon tetap ada
+            IconButton(onClick = { datePickerDialog.show() }) {
                 Icon(Icons.Default.DateRange, "Pilih Tanggal", tint = Navy)
             }
         }
@@ -332,7 +346,7 @@ fun TambahTransaksiScreen(
         Button(
             onClick = {
                 if (transactionKind.isEmpty()) { Toast.makeText(context, "Jenis transaksi harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
-                if (selectedWalletType.isEmpty()) { Toast.makeText(context, "Dompet harus dipilih", Toast.LENGTH_SHORT).show(); return@Button } // Validasi selectedWalletType
+                if (selectedWalletType.isEmpty()) { Toast.makeText(context, "Dompet harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
                 if (amount.isEmpty()) { Toast.makeText(context, "Jumlah uang harus diisi", Toast.LENGTH_SHORT).show(); return@Button }
                 val amountLongParsed = amount.toLongOrNull()
                 if (amountLongParsed == null || amountLongParsed <= 0) { Toast.makeText(context, "Jumlah harus angka positif", Toast.LENGTH_SHORT).show(); return@Button }
@@ -345,14 +359,14 @@ fun TambahTransaksiScreen(
 
                 val transactionDataForViewModel = Transaction(
                     userId = user.uid,
-                    type = selectedWalletType, // Gunakan selectedWalletType untuk type dompet
+                    type = selectedWalletType,
                     amount = amountLongParsed,
                     category = category,
                     note = note,
                     date = date,
-                    walletId = selectedWalletType, // walletId juga diisi dengan selectedWalletType
+                    walletId = selectedWalletType,
                     imageUrl = if (isEditMode && newImageUri == null && !isImageRemovedByUser) existingImageUrlFromDb else null,
-                    clientGeneratedId = if (isEditMode) initialClientGeneratedIdForEdit ?: UUID.randomUUID().toString() else "", // Pastikan ada clientGeneratedId untuk update
+                    clientGeneratedId = if (isEditMode && !initialClientGeneratedIdForEdit.isNullOrBlank()) initialClientGeneratedIdForEdit else UUID.randomUUID().toString(),
                     imageUri = null
                 )
 
@@ -360,7 +374,7 @@ fun TambahTransaksiScreen(
                     viewModel.updateTransaction(
                         existingFirestoreId = initialFirestoreIdForEdit,
                         existingLocalId = initialLocalDbIdForEdit,
-                        existingClientGeneratedId = initialClientGeneratedIdForEdit.takeIf { !it.isNullOrBlank() } ?: loadedTransactionForEdit?.clientGeneratedId, // Pastikan ada
+                        existingClientGeneratedId = initialClientGeneratedIdForEdit.takeIf { !it.isNullOrBlank() } ?: loadedTransactionForEdit?.clientGeneratedId,
                         transactionInput = transactionDataForViewModel,
                         newImageUri = newImageUri,
                         isImageRemoved = isImageRemovedByUser,
@@ -400,7 +414,7 @@ fun TambahTransaksiScreen(
             if (isLoading) CircularProgressIndicator(color = Navy, modifier = Modifier.size(24.dp))
             else Text(if (isEditMode) "Simpan Perubahan" else "Simpan", fontSize = 16.sp, fontWeight = FontWeight.Medium)
         }
-        Spacer(Modifier.height(80.dp))
+        Spacer(Modifier.height(80.dp)) // Memberi ruang agar tidak tertutup keyboard/navigasi sistem
     }
 
     if (showPhotoOptionsDialog) {

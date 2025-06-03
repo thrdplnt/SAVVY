@@ -2,11 +2,12 @@ package com.example.savvy.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.savvy.data.AnggaranDao // <-- Tambahkan import
 import com.example.savvy.data.AppDatabase
 import com.example.savvy.data.AppRepository
 import com.example.savvy.data.LocalTransactionDao
 import com.example.savvy.data.SupabaseStorageUploader
-import com.example.savvy.ui.riwayat.RiwayatViewModel
+// import com.example.savvy.ui.riwayat.RiwayatViewModel // Komentari jika tidak digunakan atau pindahkan ke ViewModelModule
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -26,7 +27,7 @@ object AppModule {
             AppDatabase::class.java,
             "savvy_database"
         )
-            .fallbackToDestructiveMigration()
+            .fallbackToDestructiveMigration() // Pastikan ini ada jika Anda tidak menyediakan migrasi eksplisit
             .build()
     }
 
@@ -38,14 +39,23 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideAnggaranDao(database: AppDatabase): AnggaranDao { // <-- Tambahkan provider ini
+        return database.anggaranDao()
+    }
+
+    @Provides
+    @Singleton
     fun provideSupabaseStorageUploader(@ApplicationContext context: Context): SupabaseStorageUploader {
         return SupabaseStorageUploader(context)
     }
 
     @Provides
     @Singleton
-    fun provideAppRepository(localTransactionDao: LocalTransactionDao): AppRepository {
-        return AppRepository(localTransactionDao)
+    fun provideAppRepository(
+        localTransactionDao: LocalTransactionDao,
+        anggaranDao: AnggaranDao // <-- Inject AnggaranDao
+    ): AppRepository {
+        return AppRepository(localTransactionDao, anggaranDao) // <-- Pass AnggaranDao
     }
 
 //    @Provides
