@@ -4,13 +4,11 @@ import android.app.DatePickerDialog
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
@@ -32,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.savvy.R
-import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.Teal
 import com.example.savvy.ui.theme.White
@@ -325,7 +322,7 @@ fun AnggaranCard(item: AnggaranUiItem, onEditClick: () -> Unit, onDeleteClick: (
                             "Kesehatan" -> R.drawable.ic_kesehatan
                             "Belanja" -> R.drawable.ic_belanja
                             "Uang Keluar" -> R.drawable.ic_uang_keluar
-                            else -> R.drawable.ic_uang_keluar // Default icon
+                            else -> R.drawable.ic_uang_masuk // Default icon
                         }
                     ),
                     contentDescription = item.localAnggaran.category,

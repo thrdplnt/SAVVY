@@ -52,8 +52,8 @@ fun TransactionItem(
                         "Kesehatan" -> R.drawable.ic_kesehatan
                         "Belanja" -> R.drawable.ic_belanja
                         "Uang Keluar" -> R.drawable.ic_uang_keluar
-                        "Pemasukan" -> R.drawable.ic_uang_keluar
-                        else -> R.drawable.ic_uang_keluar
+                        "Pemasukan" -> R.drawable.ic_uang_masuk
+                        else -> R.drawable.ic_uang_masuk
                     }),
                     contentDescription = category,
                     modifier = Modifier.size(40.dp)

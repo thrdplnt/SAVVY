@@ -41,7 +41,17 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.atan2
 import kotlin.math.sqrt
+import com.example.savvy.utils.ExportUtils
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Description
+import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import com.example.savvy.R // <<< TAMBAHKAN IMPORT R INI
+import androidx.compose.ui.draw.clip // <<< TAMBAHKAN IMPORT CLIP INI
 
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RiwayatScreen(
     navController: NavController,
@@ -50,11 +60,9 @@ fun RiwayatScreen(
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
 
-    // State untuk transaksi
     val transactions by viewModel.transactions.collectAsState()
     var filteredTransactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
 
-    // State untuk filter dan saldo
     var totalSaldo by rememberSaveable { mutableLongStateOf(0L) }
     var saldoTunai by rememberSaveable { mutableLongStateOf(0L) }
     var saldoTabungan by rememberSaveable { mutableLongStateOf(0L) }
@@ -63,36 +71,30 @@ fun RiwayatScreen(
     var totalPengeluaran by rememberSaveable { mutableLongStateOf(0L) }
     var isLoading by remember { mutableStateOf(true) }
 
-    // State untuk filter Dompetku
     val walletOptions = listOf("Semua", "Tunai", "Tabungan", "Non-Tunai")
     var selectedWallet by remember { mutableStateOf("Semua") }
     var walletExpanded by remember { mutableStateOf(false) }
 
-    // State untuk filter Rentang
     val rangeOptions = listOf("1 Hari Terakhir", "7 Hari Terakhir", "Pilih Bulan", "Pilih Tanggal")
     var selectedRange by remember { mutableStateOf("Pilih Bulan") }
     var rangeExpanded by remember { mutableStateOf(false) }
 
-    // State untuk pemilihan bulan
     var showMonthPicker by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(Calendar.getInstance()) }
 
-    // State untuk pemilihan tanggal
     var showDateRangePicker by remember { mutableStateOf(false) }
     var startDate by remember { mutableStateOf(Calendar.getInstance()) }
     var endDate by remember { mutableStateOf(Calendar.getInstance()) }
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
-    // State untuk pie chart
     val categoryData = remember { mutableStateMapOf<String, Pair<Int, Long>>() }
     var totalChartAmount by rememberSaveable { mutableLongStateOf(0L) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var selectedPercentage by remember { mutableStateOf<Float?>(null) }
 
-    // Warna untuk pie chart
     val categoryColors = mapOf(
-        "Pemasukan" to Color(0xFF4CAF50), // Hijau untuk pemasukan
+        "Pemasukan" to Color(0xFF4CAF50),
         "Makanan" to Color(0xFF6256D1),
         "Transportasi" to Color(0xFF83E46F),
         "Hiburan" to Color(0xFF4894FF),
@@ -103,19 +105,25 @@ fun RiwayatScreen(
         "Uang Keluar" to Color(0xFF76E7E7)
     )
 
-    // Hitung saldo, filter transaksi, dan data pie chart
+    // Logo untuk PDF
+    val savvyLogoBitmap = remember {
+        BitmapFactory.decodeResource(context.resources, R.drawable.logo_savvy_onboarding_4)
+    }
+
     fun filterTransactions() {
         Log.d(
             "RiwayatScreen",
             "Filtering transactions. Wallet: $selectedWallet, Range: $selectedRange"
         )
         val startTime = System.currentTimeMillis()
-        var pemasukan = 0L
-        var pengeluaran = 0L
-        var tunai = 0L
-        var tabungan = 0L
-        var nonTunai = 0L
-        val categoryMap = mutableMapOf<String, Pair<Int, Long>>()
+        var pemasukanCalculated = 0L
+        var pengeluaranCalculated = 0L
+
+        var tunaiGlobal = 0L
+        var nonTunaiGlobal = 0L
+        var tabunganGlobal = 0L
+
+        val currentCategoryMap = mutableMapOf<String, Pair<Int, Long>>()
 
         val calendar = Calendar.getInstance()
         val currentDate = calendar.time
@@ -188,63 +196,66 @@ fun RiwayatScreen(
                 endDateFilter = calendar.time
             }
 
-            else -> {
+            else -> { // Default: Bulan ini
                 calendar.set(Calendar.DAY_OF_MONTH, 1)
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
                 calendar.set(Calendar.MINUTE, 0)
                 calendar.set(Calendar.SECOND, 0)
                 calendar.set(Calendar.MILLISECOND, 0)
                 startDateFilter = calendar.time
-                calendar.time = currentDate
+                calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+                calendar.set(Calendar.HOUR_OF_DAY, 23)
+                calendar.set(Calendar.MINUTE, 59)
+                calendar.set(Calendar.SECOND, 59)
+                calendar.set(Calendar.MILLISECOND, 999)
                 endDateFilter = calendar.time
             }
         }
 
-        val filtered = mutableListOf<Transaction>()
+        val tempFiltered = mutableListOf<Transaction>()
         transactions.forEach { transaction ->
+            // Hitung saldo dompet secara global (tanpa filter tanggal)
+            val amountGlobal = transaction.amount.toLong()
+            when (transaction.type) {
+                "Tunai" -> if (transaction.category == "Pemasukan") tunaiGlobal += amountGlobal else tunaiGlobal -= amountGlobal
+                "Tabungan" -> if (transaction.category == "Pemasukan") tabunganGlobal += amountGlobal else tabunganGlobal -= amountGlobal
+                "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunaiGlobal += amountGlobal else nonTunaiGlobal -= amountGlobal
+            }
+
             val transactionDate = transaction.date ?: return@forEach
             val matchesWallet = selectedWallet == "Semua" || transaction.type == selectedWallet
             val matchesDate =
                 !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
             if (matchesWallet && matchesDate) {
-                filtered.add(transaction)
+                tempFiltered.add(transaction)
                 val amount = transaction.amount.toLong()
                 if (transaction.category == "Pemasukan") {
-                    pemasukan += amount
-                    // Tambahkan Pemasukan ke pie chart
-                    val currentData = categoryMap["Pemasukan"] ?: Pair(0, 0L)
-                    categoryMap["Pemasukan"] = Pair(currentData.first + 1, currentData.second + amount)
+                    pemasukanCalculated += amount
+                    val currentData = currentCategoryMap["Pemasukan"] ?: Pair(0, 0L)
+                    currentCategoryMap["Pemasukan"] = Pair(currentData.first + 1, currentData.second + amount)
                 } else {
-                    pengeluaran += amount
-                    // Tambahkan kategori pengeluaran ke pie chart
-                    val currentData = categoryMap[transaction.category] ?: Pair(0, 0L)
-                    categoryMap[transaction.category] = Pair(currentData.first + 1, currentData.second + amount)
+                    pengeluaranCalculated += amount
+                    val currentData = currentCategoryMap[transaction.category] ?: Pair(0, 0L)
+                    currentCategoryMap[transaction.category] = Pair(currentData.first + 1, currentData.second + amount)
                 }
-            }
-
-            // Hitung saldo per dompet
-            val amount = transaction.amount.toLong()
-            when (transaction.type) {
-                "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
-                "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
-                "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunai += amount else nonTunai -= amount
             }
         }
 
-        totalPemasukan = pemasukan
-        totalPengeluaran = pengeluaran
-        saldoTunai = tunai
-        saldoTabungan = tabungan
-        saldoNonTunai = nonTunai
-        totalSaldo = tunai + tabungan + nonTunai
-        filteredTransactions = filtered.sortedByDescending { it.date }
+        totalPemasukan = pemasukanCalculated
+        totalPengeluaran = pengeluaranCalculated
+        saldoTunai = tunaiGlobal
+        saldoTabungan = tabunganGlobal
+        saldoNonTunai = nonTunaiGlobal
+        totalSaldo = tunaiGlobal + tabunganGlobal + nonTunaiGlobal
+
+        filteredTransactions = tempFiltered.sortedByDescending { it.date }
         categoryData.clear()
-        categoryData.putAll(categoryMap)
-        totalChartAmount = pemasukan + pengeluaran
+        categoryData.putAll(currentCategoryMap)
+        totalChartAmount = pemasukanCalculated + pengeluaranCalculated // Untuk Bar Chart
         Log.d(
             "RiwayatScreen",
             "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms, " +
-                    "Pie chart data: $categoryMap, Total: $totalChartAmount"
+                    "Chart data: $currentCategoryMap, Total Chart Amount: $totalChartAmount"
         )
     }
 
@@ -274,9 +285,18 @@ fun RiwayatScreen(
                 startDate.set(Calendar.YEAR, year)
                 startDate.set(Calendar.MONTH, month)
                 startDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                startDate.set(Calendar.HOUR_OF_DAY, 0)
+                startDate.set(Calendar.MINUTE, 0)
+                startDate.set(Calendar.SECOND, 0)
+                startDate.set(Calendar.MILLISECOND, 0)
+
                 showStartDatePicker = false
                 if (endDate.before(startDate)) {
                     endDate = startDate.clone() as Calendar
+                    endDate.set(Calendar.HOUR_OF_DAY, 23)
+                    endDate.set(Calendar.MINUTE, 59)
+                    endDate.set(Calendar.SECOND, 59)
+                    endDate.set(Calendar.MILLISECOND, 999)
                 }
             },
             startDate.get(Calendar.YEAR),
@@ -293,9 +313,18 @@ fun RiwayatScreen(
                 endDate.set(Calendar.YEAR, year)
                 endDate.set(Calendar.MONTH, month)
                 endDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                endDate.set(Calendar.HOUR_OF_DAY, 23)
+                endDate.set(Calendar.MINUTE, 59)
+                endDate.set(Calendar.SECOND, 59)
+                endDate.set(Calendar.MILLISECOND, 999)
+
                 showEndDatePicker = false
                 if (endDate.before(startDate)) {
                     startDate = endDate.clone() as Calendar
+                    startDate.set(Calendar.HOUR_OF_DAY, 0)
+                    startDate.set(Calendar.MINUTE, 0)
+                    startDate.set(Calendar.SECOND, 0)
+                    startDate.set(Calendar.MILLISECOND, 0)
                 }
             },
             endDate.get(Calendar.YEAR),
@@ -377,6 +406,7 @@ fun RiwayatScreen(
                     onClick = {
                         selectedMonth.set(Calendar.YEAR, tempYear)
                         selectedMonth.set(Calendar.MONTH, tempMonth)
+                        selectedMonth.set(Calendar.DAY_OF_MONTH, 1)
                         showMonthPicker = false
                     }
                 ) {
@@ -404,7 +434,7 @@ fun RiwayatScreen(
 
     // Dialog untuk memilih rentang tanggal
     if (showDateRangePicker) {
-        val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("id"))
+        val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")) // Perbaiki format tanggal
         AlertDialog(
             onDismissRequest = { showDateRangePicker = false },
             title = {
@@ -482,212 +512,265 @@ fun RiwayatScreen(
         )
     }
 
-    // UI
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(White)
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Total Saldo
-        if (isLoading) {
-            CircularProgressIndicator(
-                color = Navy,
-                modifier = Modifier.size(48.dp)
-            )
-        } else {
-            Text(
-                text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalSaldo)}",
-                style = MaterialTheme.typography.headlineLarge,
-                color = Navy,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            Text(
-                text = "Total saldo",
-                style = MaterialTheme.typography.labelSmall,
-                color = Shadow,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            // Dropdown Filters
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Box(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    OutlinedButton(
-                        onClick = { walletExpanded = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Navy
-                        )
-                    ) {
-                        Text(
-                            text = selectedWallet,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Dropdown",
-                            tint = Navy
-                        )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Riwayat", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Navy) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = White),
+                actions = {
+                    var showExportMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showExportMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Opsi Ekspor")
                     }
                     DropdownMenu(
-                        expanded = walletExpanded,
-                        onDismissRequest = { walletExpanded = false },
-                        modifier = Modifier
-                            .background(White)
-                            .fillMaxWidth()
+                        expanded = showExportMenu,
+                        onDismissRequest = { showExportMenu = false }
                     ) {
-                        walletOptions.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
-                                onClick = {
-                                    selectedWallet = option
-                                    walletExpanded = false
-                                }
-                            )
-                        }
+                        DropdownMenuItem(
+                            text = { Text("Ekspor ke PDF") },
+                            onClick = {
+                                showExportMenu = false
+                                val currentDateTime = Date()
+                                val fileName = "Laporan_Transaksi_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale("id", "ID")).format(currentDateTime)}"
+                                val reportTitle = "Laporan Transaksi"
+
+                                val uri = ExportUtils.exportTransactionsToPdf(
+                                    context,
+                                    filteredTransactions,
+                                    fileName,
+                                    reportTitle,
+                                    savvyLogoBitmap
+                                )
+                                uri?.let { ExportUtils.openFile(context, it, "application/pdf") }
+                            },
+                            leadingIcon = { Icon(Icons.Filled.PictureAsPdf, contentDescription = "PDF") }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Ekspor ke CSV") },
+                            onClick = {
+                                showExportMenu = false
+                                val currentDateTime = Date()
+                                val fileName = "Laporan_Transaksi_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale("id", "ID")).format(currentDateTime)}"
+
+                                val uri = ExportUtils.exportTransactionsToCsv(
+                                    context,
+                                    filteredTransactions,
+                                    fileName
+                                )
+                                uri?.let { ExportUtils.openFile(context, it, "text/csv") }
+                            },
+                            leadingIcon = { Icon(Icons.Filled.Description, contentDescription = "CSV") }
+                        )
                     }
                 }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(White)
+                .padding(paddingValues)
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Total Saldo
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Navy,
+                    modifier = Modifier.size(48.dp)
+                )
+            } else {
+                Text(
+                    text = "Rp ${NumberFormat.getNumberInstance(Locale("id", "ID")).format(totalSaldo)}",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = Navy,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                Text(
+                    text = "Total saldo",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Shadow,
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
 
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Box(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    OutlinedButton(
-                        onClick = { rangeExpanded = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Navy
-                        )
-                    ) {
-                        Text(
-                            text = selectedRange,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Dropdown",
-                            tint = Navy
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = rangeExpanded,
-                        onDismissRequest = { rangeExpanded = false },
-                        modifier = Modifier
-                            .background(White)
-                            .fillMaxWidth()
-                    ) {
-                        rangeOptions.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
-                                onClick = {
-                                    selectedRange = option
-                                    rangeExpanded = false
-                                    if (option == "Pilih Bulan") {
-                                        showMonthPicker = true
-                                    } else if (option == "Pilih Tanggal") {
-                                        showDateRangePicker = true
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Pemasukan dan Pengeluaran
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Beige
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
+                // Dropdown Filters
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp)
+                        .padding(bottom = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Box(
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = "Pemasukan",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Navy
-                        )
-                        Text(
-                            text = "Rp ${
-                                NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan)
-                            }",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Navy
-                        )
+                        OutlinedButton(
+                            onClick = { walletExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Navy
+                            )
+                        ) {
+                            Text(
+                                text = selectedWallet,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Dropdown",
+                                tint = Navy
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = walletExpanded,
+                            onDismissRequest = { walletExpanded = false },
+                            modifier = Modifier
+                                .background(White)
+                                .fillMaxWidth()
+                        ) {
+                            walletOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
+                                    onClick = {
+                                        selectedWallet = option
+                                        walletExpanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Box(
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = "Pengeluaran",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Navy
-                        )
-                        Text(
-                            text = "Rp ${
-                                NumberFormat.getNumberInstance(Locale("id"))
-                                    .format(totalPengeluaran)
-                            }",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Navy
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Divider(
-                        color = Navy,
-                        thickness = 1.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Jumlah",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Navy
-                        )
-                        Text(
-                            text = "Rp ${
-                                NumberFormat.getNumberInstance(Locale("id"))
-                                    .format(totalPemasukan - totalPengeluaran)
-                            }",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (totalPemasukan - totalPengeluaran >= 0) Navy else ErrorRed
-                        )
+                        OutlinedButton(
+                            onClick = { rangeExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Navy
+                            )
+                        ) {
+                            Text(
+                                text = selectedRange,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Dropdown",
+                                tint = Navy
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = rangeExpanded,
+                            onDismissRequest = { rangeExpanded = false },
+                            modifier = Modifier
+                                .background(White)
+                                .fillMaxWidth()
+                        ) {
+                            rangeOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
+                                    onClick = {
+                                        selectedRange = option
+                                        rangeExpanded = false
+                                        if (option == "Pilih Bulan") {
+                                            showMonthPicker = true
+                                        } else if (option == "Pilih Tanggal") {
+                                            showDateRangePicker = true
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
-            }
 
-            // Pie Chart
-            if (totalChartAmount > 0) {
+                // Pemasukan dan Pengeluaran
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Beige
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Pemasukan",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Navy
+                            )
+                            Text(
+                                text = "Rp ${
+                                    NumberFormat.getNumberInstance(Locale("id", "ID")).format(totalPemasukan)
+                                }",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Navy
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Pengeluaran",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Navy
+                            )
+                            Text(
+                                text = "Rp ${
+                                    NumberFormat.getNumberInstance(Locale("id", "ID"))
+                                        .format(totalPengeluaran)
+                                }",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Navy
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Divider(
+                            color = Navy,
+                            thickness = 1.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Jumlah",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Navy
+                            )
+                            Text(
+                                text = "Rp ${
+                                    NumberFormat.getNumberInstance(Locale("id", "ID"))
+                                        .format(totalPemasukan - totalPengeluaran)
+                                }",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (totalPemasukan - totalPengeluaran >= 0) Navy else ErrorRed
+                            )
+                        }
+                    }
+                }
+
+                // Mutasi (Riwayat Transaksi)
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -698,167 +781,46 @@ fun RiwayatScreen(
                     ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(24.dp)
+                            .wrapContentHeight(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Pie Chart
-                        Canvas(
-                            modifier = Modifier
-                                .size(150.dp)
-                                .pointerInput(Unit) {
-                                    awaitPointerEventScope {
-                                        while (true) {
-                                            val event = awaitPointerEvent()
-                                            if (event.type == PointerEventType.Press) {
-                                                val offset = event.changes.first().position
-                                                // Hitung posisi klik relatif terhadap pusat pie chart
-                                                val centerX = size.width / 2f
-                                                val centerY = size.height / 2f
-                                                val dx = offset.x - centerX
-                                                val dy = offset.y - centerY
-
-                                                // Hitung jarak dari pusat untuk memastikan klik berada di dalam pie chart
-                                                val distance = sqrt(dx * dx + dy * dy)
-                                                val radius = size.width / 2f
-                                                val innerRadius = radius - 40f // Lebar stroke adalah 80f
-
-                                                if (distance in innerRadius..radius) {
-                                                    // Hitung sudut dari posisi klik
-                                                    var angle = atan2(dy, dx) * 180 / Math.PI
-                                                    if (angle < 0) angle += 360
-
-                                                    // Tentukan segmen yang diklik berdasarkan sudut
-                                                    var startAngle = 0f
-                                                    var selected: String? = null
-                                                    var percentage: Float? = null
-
-                                                    categoryData.forEach { (category, data) ->
-                                                        val sweepAngle = (data.second.toFloat() / totalChartAmount.toFloat()) * 360f
-                                                        if (angle >= startAngle && angle < startAngle + sweepAngle) {
-                                                            selected = category
-                                                            percentage = (data.second.toFloat() / totalChartAmount.toFloat()) * 100f
-                                                        }
-                                                        startAngle += sweepAngle
-                                                    }
-
-                                                    selectedCategory = selected
-                                                    selectedPercentage = percentage
-                                                } else {
-                                                    // Jika klik di luar area pie chart, hapus informasi
-                                                    selectedCategory = null
-                                                    selectedPercentage = null
-                                                }
-                                                event.changes.forEach { it.consume() }
-                                            }
-                                        }
-                                    }
-                                }
-                        ) {
-                            var startAngle = 0f
-                            categoryData.forEach { (category, data) ->
-                                val sweepAngle = (data.second.toFloat() / totalChartAmount.toFloat()) * 360f
-                                val isSelected = category == selectedCategory
-                                drawArc(
-                                    color = categoryColors[category] ?: Color.Gray,
-                                    startAngle = startAngle,
-                                    sweepAngle = sweepAngle,
-                                    useCenter = false,
-                                    topLeft = Offset(0f, 0f),
-                                    size = Size(size.width, size.height),
-                                    style = Stroke(width = if (isSelected) 100f else 80f) // Segmen yang dipilih lebih tebal
-                                )
-                                startAngle += sweepAngle
-                            }
-                        }
-
-                        // Tampilkan detail di tengah pie chart
-                        Column(
-                            modifier = Modifier
-                                .width(100.dp), // Batasi lebar teks
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (selectedCategory != null && selectedPercentage != null) {
-                                Text(
-                                    text = selectedCategory!!,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Navy,
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = "${String.format("%.1f", selectedPercentage)}%",
-                                    fontSize = 12.sp,
-                                    color = Navy,
-                                    textAlign = TextAlign.Center
-                                )
-                            } else {
-                                Text(
-                                    text = "Ketuk untuk\nmelihat detail",
-                                    fontSize = 12.sp,
-                                    color = Shadow,
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 16.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Mutasi (Riwayat Transaksi)
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = White
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp)
-                        .wrapContentHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Riwayat",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Navy,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    if (filteredTransactions.isEmpty()) {
                         Text(
-                            text = "Tidak ada transaksi",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Shadow,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                            text = "Riwayat",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Navy,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                    } else {
-                        filteredTransactions.forEach { transaction ->
-                            val isLocal = transaction.id.startsWith("local_")
-                            TransactionItem(
-                                transaction = transaction,
-                                isLocal = isLocal,
-                                onClick = {
-                                    Log.d(
-                                        "RiwayatScreen",
-                                        "Navigating to DetailTransaksi with ID: ${transaction.id}"
-                                    )
-                                    navController.navigate(
-                                        Screen.DetailTransaksi.createRoute(
-                                            transaction.id
-                                        )
-                                    )
-                                }
+
+                        if (filteredTransactions.isEmpty()) {
+                            Text(
+                                text = "Tidak ada transaksi",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Shadow,
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
                             )
+                        } else {
+                            filteredTransactions.forEach { transaction ->
+                                val isLocal = transaction.id.startsWith("local_")
+                                TransactionItem(
+                                    transaction = transaction,
+                                    isLocal = isLocal,
+                                    onClick = {
+                                        Log.d(
+                                            "RiwayatScreen",
+                                            "Navigating to DetailTransaksi with ID: ${transaction.id}"
+                                        )
+                                        navController.navigate(
+                                            Screen.DetailTransaksi.createRoute(
+                                                transaction.id
+                                            )
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
