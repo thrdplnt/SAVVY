@@ -221,22 +221,22 @@ fun DetailTransaksiScreen(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "ID Dompet",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Navy
-                    )
-                    Text(
-                        text = transaction!!.walletId.ifEmpty { "Tidak ada ID Dompet" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Navy
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
+//                Row(
+//                    modifier = Modifier.fillMaxWidth(),
+//                    horizontalArrangement = Arrangement.SpaceBetween
+//                ) {
+//                    Text(
+//                        text = "ID Dompet",
+//                        style = MaterialTheme.typography.bodyLarge,
+//                        color = Navy
+//                    )
+//                    Text(
+//                        text = transaction!!.walletId.ifEmpty { "Tidak ada ID Dompet" },
+//                        style = MaterialTheme.typography.bodyMedium,
+//                        color = Navy
+//                    )
+//                }
+//                Spacer(modifier = Modifier.height(12.dp))
 
                 // Only show local imageUri
                 transaction!!.imageUri?.let { imageUri ->
