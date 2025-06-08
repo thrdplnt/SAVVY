@@ -2,10 +2,12 @@ package com.example.savvy.data
 
 import com.google.firebase.firestore.ServerTimestamp
 import java.util.Date
+import java.util.UUID
+
 
 data class Transaction(
     val id: String = "", // Akan diisi Firestore Document ID
-    val clientGeneratedId: String = "", // PASTIKAN INI NON-NULLABLE DAN DEFAULT KOSONG
+    val clientGeneratedId: String = UUID.randomUUID().toString(), // PASTIKAN INI NON-NULLABLE DAN DEFAULT KOSONG
     val userId: String = "",
     val walletId: String = "",
     val type: String = "", // Ini adalah tipe/nama dompet

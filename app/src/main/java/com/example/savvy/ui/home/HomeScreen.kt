@@ -2,87 +2,63 @@ package com.example.savvy.ui.home
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.savvy.R
+import com.example.savvy.data.Transaction
 import com.example.savvy.ui.components.AnalysisItem
-import com.example.savvy.data.Screen
+import com.example.savvy.ui.components.TransactionItem
 import com.example.savvy.ui.theme.Navy
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import com.example.savvy.ui.theme.White
 import java.text.NumberFormat
-import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.Image
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.text.style.TextAlign
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
 @Composable
 fun HomeScreen(
     navController: NavController,
-    onClearSearch: () -> Unit = {} // Callback untuk mengosongkan pencarian dari navbar
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val db = FirebaseFirestore.getInstance()
-    val auth = FirebaseAuth.getInstance()
+    val uiState by viewModel.uiState.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
-
-    // State untuk data saldo dan transaksi
-    var totalSaldo by rememberSaveable { mutableLongStateOf(0L) }
-    var saldoTunai by rememberSaveable { mutableLongStateOf(0L) }
-    var saldoNonTunai by rememberSaveable { mutableLongStateOf(0L) }
-    var saldoTabungan by rememberSaveable { mutableLongStateOf(0L) }
-    var isLoading by remember { mutableStateOf(true) }
     var showDompetDialog by remember { mutableStateOf(false) }
-    var isSaldoVisible by remember { mutableStateOf(true) } // State untuk visibilitas saldo
-
-    // State untuk analisis transaksi per kategori (dalam sebulan)
-    val categoryData = remember { mutableStateMapOf<String, Pair<Int, Long>>() }
-    var totalPengeluaran by rememberSaveable { mutableLongStateOf(0L) }
-
-    // State untuk semua transaksi
-    val allTransactions = remember { mutableStateListOf<Map<String, Any>>() }
-
-    // State untuk pencarian
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredTransactions = remember { mutableStateListOf<Map<String, Any>>() }
-    var hasSearched by remember { mutableStateOf(false) } // State untuk melacak apakah pencarian sudah dilakukan
-
-    // State untuk kategori yang dipilih di pie chart
+    var isSaldoVisible by rememberSaveable { mutableStateOf(true) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var selectedPercentage by remember { mutableStateOf<Float?>(null) }
 
@@ -98,152 +74,20 @@ fun HomeScreen(
         "Uang Keluar" to Color(0xFF76E7E7)
     )
 
-    // Ambil data transaksi dari Firestore
-    LaunchedEffect(Unit) {
-        val user = auth.currentUser
-        if (user == null) {
-            navController.navigate(Screen.Login.route)
-            return@LaunchedEffect
-        }
-
-        val calendar = Calendar.getInstance()
-        val currentMonth = calendar.get(Calendar.MONTH)
-        val currentYear = calendar.get(Calendar.YEAR)
-
-        db.collection("transactions")
-            .whereEqualTo("userId", user.uid)
-            .get()
-            .addOnSuccessListener { querySnapshot ->
-                var tunai = 0L
-                var nonTunai = 0L
-                var tabungan = 0L
-                val categoryMap = mutableMapOf<String, Pair<Int, Long>>()
-                allTransactions.clear()
-
-                for (document in querySnapshot.documents) {
-                    val type = document.getString("type") ?: ""
-                    val amount = document.getLong("amount") ?: 0L
-                    val category = document.getString("category") ?: ""
-                    val date = document.getTimestamp("date")?.toDate()
-                    val note = document.getString("note") ?: ""
-
-                    // Simpan semua transaksi dengan tipe yang sesuai
-                    val transaction = mapOf<String, Any>(
-                        "type" to type,
-                        "amount" to amount,
-                        "category" to category,
-                        "date" to (date ?: ""),
-                        "note" to note
-                    )
-                    allTransactions.add(transaction)
-
-                    // Hitung saldo per dompet
-                    when (type) {
-                        "Tunai" -> if (category == "Pemasukan") tunai += amount else tunai -= amount
-                        "Non-Tunai" -> if (category == "Pemasukan") nonTunai += amount else nonTunai -= amount
-                        "Tabungan" -> if (category == "Pemasukan") tabungan += amount else tabungan -= amount
-                    }
-
-                    // Hanya ambil transaksi untuk bulan saat ini untuk analisis
-                    if (date != null) {
-                        calendar.time = date
-                        val transactionMonth = calendar.get(Calendar.MONTH)
-                        val transactionYear = calendar.get(Calendar.YEAR)
-
-                        if (transactionMonth == currentMonth && transactionYear == currentYear && category != "Pemasukan") {
-                            val currentData = categoryMap[category] ?: Pair(0, 0L)
-                            categoryMap[category] = Pair(currentData.first + 1, currentData.second + amount)
-                        }
-                    }
-                }
-
-                saldoTunai = tunai
-                saldoNonTunai = nonTunai
-                saldoTabungan = tabungan
-                totalSaldo = tunai + nonTunai + tabungan
-                categoryData.putAll(categoryMap)
-                totalPengeluaran = categoryMap.values.sumOf { it.second }
-                isLoading = false
-            }
-            .addOnFailureListener { e ->
-                isLoading = false
-                android.widget.Toast.makeText(
-                    context,
-                    "Gagal mengambil data transaksi: ${e.message}",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
-            }
+    // Menangani tombol back fisik saat dalam mode pencarian
+    BackHandler(enabled = uiState.isSearching) {
+        viewModel.clearSearch()
     }
 
-    // Fungsi untuk menangani pencarian
-    fun performSearch() {
-        if (searchQuery.isNotEmpty()) {
-            filteredTransactions.clear()
-            val query = searchQuery.lowercase()
-            allTransactions.forEach { transaction ->
-                val category = (transaction["category"] as? String)?.lowercase() ?: ""
-                val note = (transaction["note"] as? String)?.lowercase() ?: ""
-                val date = transaction["date"]
-                val dateString = if (date is Date) {
-                    SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(date).lowercase()
-                } else {
-                    ""
-                }
-
-                if (category.contains(query) || note.contains(query) || dateString.contains(query)) {
-                    filteredTransactions.add(transaction)
-                }
-            }
-            hasSearched = true // Tandai bahwa pencarian sudah dilakukan
-            keyboardController?.hide() // Sembunyikan keyboard
-        } else {
-            filteredTransactions.clear()
-            hasSearched = false
-        }
-    }
-
-    // Fungsi untuk mengosongkan hasil pencarian
-    fun clearSearch() {
-        filteredTransactions.clear()
-        searchQuery = ""
-        hasSearched = false
-    }
-
-    // Tangani tombol back perangkat
-    BackHandler(enabled = hasSearched) {
-        clearSearch() // Kosongkan hasil pencarian saat tombol back ditekan
-    }
-
-    // Dialog untuk menampilkan semua dompet
-    if (showDompetDialog) {
-        AlertDialog(
-            onDismissRequest = { showDompetDialog = false },
-            title = { Text("Dompetku", color = Navy, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("Tunai: Rp ${NumberFormat.getNumberInstance(Locale("id")).format(saldoTunai)}")
-                    Text("Non-Tunai: Rp ${NumberFormat.getNumberInstance(Locale("id")).format(saldoNonTunai)}")
-                    Text("Tabungan: Rp ${NumberFormat.getNumberInstance(Locale("id")).format(saldoTabungan)}")
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showDompetDialog = false }) {
-                    Text("Tutup", color = Navy)
-                }
-            }
-        )
-    }
-
-    // Gunakan Column langsung tanpa Scaffold
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 0.dp)
+            .background(White)
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Logo Savvy di sebelah kiri
+        // Logo
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -259,412 +103,346 @@ fun HomeScreen(
 
         // Search Bar
         OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
+            value = uiState.searchQuery,
+            onValueChange = { viewModel.onSearchQueryChanged(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp)
-                .onKeyEvent { event ->
-                    if (event.key == Key.Enter) {
-                        performSearch()
-                        true
-                    } else {
-                        false
-                    }
-                },
-            placeholder = { Text("Search") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search",
-                    tint = Navy
-                )
-            },
+                .padding(bottom = 16.dp),
+            placeholder = { Text("Cari kategori, catatan, atau tanggal", style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon = { Icon(Icons.Default.Search, "Search Icon", tint = Navy) },
             trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Perform Search",
-                        tint = Navy,
-                        modifier = Modifier
-                            .clickable { performSearch() }
-                            .size(24.dp)
-                    )
+                if (uiState.searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.clearSearch() }) {
+                        Icon(Icons.Default.Clear, "Clear Search", tint = Navy)
+                    }
                 }
             },
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(24.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Navy,
-                unfocusedBorderColor = Color.Gray
+                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
             ),
             keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(
-                onSearch = { performSearch() }
-            )
+            keyboardActions = KeyboardActions(onSearch = {
+                viewModel.performSearch()
+                keyboardController?.hide()
+            }),
+            singleLine = true
         )
 
-        // Tampilkan hasil pencarian atau pesan jika tidak ditemukan
-        if (hasSearched) {
-            if (filteredTransactions.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Hasil Pencarian",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Navy,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
-                        )
-
-                        filteredTransactions.forEach { transaction ->
-                            val amount = transaction["amount"] as? Long ?: 0L
-                            val category = transaction["category"] as? String ?: "Unknown"
-                            val date = transaction["date"]
-                            val dateString = if (date is Date) {
-                                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(date)
-                            } else {
-                                "Unknown Date"
-                            }
-                            val note = transaction["note"] as? String ?: "No note"
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text(
-                                        text = category,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Navy
-                                    )
-                                    Text(
-                                        text = "Tanggal: $dateString",
-                                        fontSize = 14.sp,
-                                        color = Color.Gray
-                                    )
-                                    Text(
-                                        text = "Catatan: $note",
-                                        fontSize = 14.sp,
-                                        color = Color.Gray
-                                    )
-                                }
-                                Text(
-                                    text = "-Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Navy
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
+        // Tampilan kondisional
+        if (uiState.isSearching) {
+            SearchResultsContent(
+                searchResults = uiState.searchResults,
+                onTransactionClick = { transactionId ->
+                    navController.navigate("detail_transaksi/$transactionId")
                 }
-            } else {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Hasil Pencarian Tidak Ditemukan",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Navy,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Text(
-                            text = "Coba gunakan kata kunci lain.",
-                            fontSize = 14.sp,
-                            color = Color.Gray
-                        )
-                    }
-                }
-            }
+            )
         } else {
-            // Total Saldo dengan Ikon Mata (posisi di sebelah kiri)
-            if (isLoading) {
-                CircularProgressIndicator(
-                    color = Navy,
-                    modifier = Modifier.size(48.dp)
-                )
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start // Geser ke kiri
-                ) {
-                    Text(
-                        text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalSaldo)}" else "****",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Navy
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = if (isSaldoVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = "Toggle Saldo Visibility",
-                        tint = Navy,
-                        modifier = Modifier
-                            .clickable { isSaldoVisible = !isSaldoVisible }
-                            .size(24.dp)
-                    )
-                }
-                Text(
-                    text = "Total saldo",
-                    fontSize = 16.sp,
-                    color = Color.Gray,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Start // Teks "Total saldo" juga di sebelah kiri
-                )
+            DashboardContent(
+                uiState = uiState,
+                isSaldoVisible = isSaldoVisible,
+                onSaldoVisibilityToggle = { isSaldoVisible = !isSaldoVisible },
+                onLihatSemuaDompetClick = { showDompetDialog = true },
+                categoryColors = categoryColors,
+                selectedCategory = selectedCategory,
+                selectedPercentage = selectedPercentage,
+                onCategorySelected = { category, percentage ->
+                    selectedCategory = category
+                    selectedPercentage = percentage
+                },
+                navController = navController
+            )
+        }
+    }
 
-                // Dompetku (di dalam kotak biru dengan shadow)
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFE6F0FA)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
+    // Dialog untuk menampilkan semua dompet
+    if (showDompetDialog) {
+        AlertDialog(
+            onDismissRequest = { showDompetDialog = false },
+            title = { Text("Semua Dompet", color = Navy, fontWeight = FontWeight.Bold) },
+            text = {
+                LazyColumn {
+                    items(uiState.walletsWithBalance) { walletItem ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .padding(vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            Text(walletItem.wallet.name, color = Navy, fontSize = 16.sp)
                             Text(
-                                text = "Dompetku",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Navy
+                                text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(walletItem.balance)}" else "****",
+                                color = Navy,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp
                             )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDompetDialog = false }) {
+                    Text("Tutup", color = Navy)
+                }
+            },
+            containerColor = White
+        )
+    }
+}
+
+@Composable
+fun DashboardContent(
+    uiState: HomeUiState,
+    isSaldoVisible: Boolean,
+    onSaldoVisibilityToggle: () -> Unit,
+    onLihatSemuaDompetClick: () -> Unit,
+    categoryColors: Map<String, Color>,
+    selectedCategory: String?,
+    selectedPercentage: Float?,
+    onCategorySelected: (String?, Float?) -> Unit,
+    navController: NavController
+) {
+    Column {
+        if (uiState.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Navy)
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                Text(
+                    text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(uiState.totalSaldo)}" else "****",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Navy
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = if (isSaldoVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                    contentDescription = "Toggle Saldo Visibility",
+                    tint = Navy,
+                    modifier = Modifier
+                        .clickable(onClick = onSaldoVisibilityToggle)
+                        .size(24.dp)
+                )
+            }
+            Text(
+                text = "Total saldo",
+                fontSize = 16.sp,
+                color = Color.Gray,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                textAlign = TextAlign.Start
+            )
+
+            // Card Dompetku
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE6F0FA)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Dompetku",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Navy
+                        )
+                        if (uiState.walletsWithBalance.size > 2) {
                             Text(
                                 text = "Lihat selengkapnya",
                                 fontSize = 14.sp,
                                 color = Navy,
                                 modifier = Modifier
-                                    .clickable { showDompetDialog = true }
+                                    .clickable(onClick = onLihatSemuaDompetClick)
                                     .padding(start = 8.dp),
-                                textDecoration = TextDecoration.Underline // Garis bawah
+                                textDecoration = TextDecoration.Underline
                             )
                         }
-                        // Garis putih di bawah "Dompetku"
-                        Divider(
-                            color = Color.White,
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                    }
+                    Divider(
+                        color = White,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    if (uiState.walletsWithBalance.isEmpty()) {
+                        Text(
+                            text = "Belum ada dompet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Navy.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Tunai",
-                                fontSize = 16.sp,
-                                color = Navy
-                            )
-                            Text(
-                                text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(saldoTunai)}" else "****",
-                                fontSize = 16.sp,
-                                color = Navy,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Tabungan",
-                                fontSize = 16.sp,
-                                color = Navy
-                            )
-                            Text(
-                                text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(saldoTabungan)}" else "****",
-                                fontSize = 16.sp,
-                                color = Navy,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                // Pie Chart (di dalam kotak putih dengan shadow)
-                if (totalPengeluaran > 0) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color.White
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp)
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            // Pie Chart
-                            Canvas(
+                    } else {
+                        // Tampilkan semua dompet di card, bukan hanya 2
+                        uiState.walletsWithBalance.forEach { walletItem ->
+                            Row(
                                 modifier = Modifier
-                                    .size(150.dp)
-                                    .pointerInput(Unit) {
-                                        awaitPointerEventScope {
-                                            while (true) {
-                                                val event = awaitPointerEvent()
-                                                if (event.type == PointerEventType.Press) {
-                                                    val offset = event.changes.first().position
-                                                    // Hitung posisi klik relatif terhadap pusat pie chart
-                                                    val centerX = size.width / 2f
-                                                    val centerY = size.height / 2f
-                                                    val dx = offset.x - centerX
-                                                    val dy = offset.y - centerY
-
-                                                    // Hitung jarak dari pusat untuk memastikan klik berada di dalam pie chart
-                                                    val distance = sqrt(dx * dx + dy * dy)
-                                                    val radius = size.width / 2f
-                                                    val innerRadius = radius - 40f // Lebar stroke adalah 80f, jadi inner radius = radius - (stroke/2)
-
-                                                    if (distance in innerRadius..radius) {
-                                                        // Hitung sudut dari posisi klik
-                                                        var angle = atan2(dy, dx) * 180 / Math.PI
-                                                        if (angle < 0) angle += 360
-
-                                                        // Tentukan segmen yang diklik berdasarkan sudut
-                                                        var startAngle = 0f
-                                                        var selected: String? = null
-                                                        var percentage: Float? = null
-
-                                                        categoryData.forEach { (category, data) ->
-                                                            val sweepAngle = (data.second.toFloat() / totalPengeluaran.toFloat()) * 360f
-                                                            if (angle >= startAngle && angle < startAngle + sweepAngle) {
-                                                                selected = category
-                                                                percentage = (data.second.toFloat() / totalPengeluaran.toFloat()) * 100f
-                                                            }
-                                                            startAngle += sweepAngle
-                                                        }
-
-                                                        selectedCategory = selected
-                                                        selectedPercentage = percentage
-                                                    } else {
-                                                        // Jika klik di luar area pie chart, hapus informasi
-                                                        selectedCategory = null
-                                                        selectedPercentage = null
-                                                    }
-                                                    event.changes.forEach { it.consume() }
-                                                }
-                                            }
-                                        }
-                                    }
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                var startAngle = 0f
-                                categoryData.forEach { (category, data) ->
-                                    val sweepAngle = (data.second.toFloat() / totalPengeluaran.toFloat()) * 360f
-                                    val isSelected = category == selectedCategory
-                                    drawArc(
-                                        color = categoryColors[category] ?: Color.Gray,
-                                        startAngle = startAngle,
-                                        sweepAngle = sweepAngle,
-                                        useCenter = false,
-                                        topLeft = Offset(0f, 0f),
-                                        size = Size(size.width, size.height),
-                                        style = Stroke(width = if (isSelected) 100f else 80f) // Segmen yang dipilih lebih tebal
-                                    )
-                                    startAngle += sweepAngle
-                                }
-                            }
-
-                            // Tampilkan detail di tengah pie chart
-                            Column(
-                                modifier = Modifier
-                                    .width(100.dp), // Batasi lebar teks agar tidak terlalu lelet
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                if (selectedCategory != null && selectedPercentage != null) {
-                                    Text(
-                                        text = selectedCategory!!,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Navy,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Text(
-                                        text = "${String.format("%.1f", selectedPercentage)}%",
-                                        fontSize = 12.sp,
-                                        color = Navy,
-                                        textAlign = TextAlign.Center
-                                    )
-                                } else {
-                                    Text(
-                                        text = "Ketuk untuk\nmelihat detail",
-                                        fontSize = 12.sp,
-                                        color = Color.Gray,
-                                        textAlign = TextAlign.Center,
-                                        lineHeight = 16.sp // Jarak antar baris
-                                    )
-                                }
+                                Text(
+                                    text = walletItem.wallet.name,
+                                    fontSize = 16.sp,
+                                    color = Navy
+                                )
+                                Text(
+                                    text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(walletItem.balance)}" else "****",
+                                    fontSize = 16.sp,
+                                    color = Navy,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
                 }
+            }
 
-                // Analisis (di dalam kotak putih dengan shadow)
+            // Pie Chart
+            if (uiState.totalPengeluaranBulanIni > 0) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(
+                            modifier = Modifier
+                                .size(150.dp)
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            if (event.type == PointerEventType.Press) {
+                                                val offset = event.changes.first().position
+                                                val centerX = size.width / 2f
+                                                val centerY = size.height / 2f
+                                                val dx = offset.x - centerX
+                                                val dy = offset.y - centerY
+
+                                                val distance = sqrt(dx * dx + dy * dy)
+                                                val radius = size.width / 2f
+                                                val innerRadius = radius - 40f
+
+                                                if (distance in innerRadius..radius) {
+                                                    var angle = atan2(dy, dx) * 180 / Math.PI
+                                                    if (angle < 0) angle += 360
+
+                                                    var startAngle = 0f
+                                                    var selected: String? = null
+                                                    var percentage: Float? = null
+
+                                                    uiState.monthlyCategoryExpenses.forEach { (category, amount) ->
+                                                        val sweepAngle = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 360f
+                                                        if (angle >= startAngle && angle < startAngle + sweepAngle) {
+                                                            selected = category
+                                                            percentage = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 100f
+                                                        }
+                                                        startAngle += sweepAngle
+                                                    }
+
+                                                    onCategorySelected(selected, percentage)
+                                                } else {
+                                                    onCategorySelected(null, null)
+                                                }
+                                                event.changes.forEach { it.consume() }
+                                            }
+                                        }
+                                    }
+                                }
+                        ) {
+                            var startAngle = 0f
+                            uiState.monthlyCategoryExpenses.forEach { (category, amount) ->
+                                val sweepAngle = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 360f
+                                val isSelected = category == selectedCategory
+                                drawArc(
+                                    color = categoryColors[category] ?: Color.Gray,
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepAngle,
+                                    useCenter = false,
+                                    topLeft = Offset(0f, 0f),
+                                    size = Size(size.width, size.height),
+                                    style = Stroke(width = if (isSelected) 100f else 80f)
+                                )
+                                startAngle += sweepAngle
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.width(100.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            if (selectedCategory != null && selectedPercentage != null) {
+                                Text(
+                                    text = selectedCategory!!,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Navy,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = "${String.format("%.1f", selectedPercentage)}%",
+                                    fontSize = 12.sp,
+                                    color = Navy,
+                                    textAlign = TextAlign.Center
+                                )
+                            } else {
+                                Text(
+                                    text = "Ketuk untuk\nmelihat detail",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Card Analisis
+            if (uiState.monthlyCategoryExpenses.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = White),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
                     Column(
@@ -673,28 +451,89 @@ fun HomeScreen(
                             .padding(16.dp)
                     ) {
                         Text(
-                            text = "Analisis",
+                            text = "Analisis Pengeluaran Bulan Ini",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Navy,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        // Garis hitam di bawah "Analisis"
                         Divider(
-                            color = Color.Black,
+                            color = Navy.copy(alpha = 0.3f),
                             thickness = 1.dp,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-
-                        categoryData.entries.forEachIndexed { index, (category, data) ->
+                        uiState.monthlyCategoryExpenses.entries.sortedByDescending { it.value }.forEach { (category, totalAmount) ->
                             AnalysisItem(
                                 category = category,
-                                transactionCount = data.first,
-                                totalAmount = data.second,
-                                totalPengeluaran = totalPengeluaran,
+                                transactionCount = uiState.monthlyCategoryCounts[category] ?: 0,
+                                totalAmount = totalAmount,
+                                totalPengeluaran = uiState.totalPengeluaranBulanIni,
                                 navController = navController
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SearchResultsContent(
+    searchResults: List<Transaction>,
+    onTransactionClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp)
+    ) {
+        Text(
+            text = "Hasil Pencarian (${searchResults.size})",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Navy,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        if (searchResults.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Tidak ada transaksi yang cocok.",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    searchResults.forEachIndexed { index, transaction ->
+                        TransactionItem(
+                            transaction = transaction,
+                            onClick = { onTransactionClick(transaction.id) }
+                        )
+                        if (index < searchResults.lastIndex) {
+                            Divider(
+                                color = Color.Gray.copy(alpha = 0.5f),
+                                thickness = 0.5.dp
                             )
                         }
                     }

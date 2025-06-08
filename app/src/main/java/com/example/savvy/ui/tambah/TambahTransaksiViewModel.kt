@@ -26,15 +26,29 @@ import java.io.File
 import java.util.Date
 import java.util.UUID
 import javax.inject.Inject
+import com.example.savvy.data.AppRepository // Import AppRepository
+import com.example.savvy.data.Wallet // Import Wallet
+import kotlinx.coroutines.flow.SharingStarted // Import SharingStarted
+import kotlinx.coroutines.flow.StateFlow // Import StateFlow
+import kotlinx.coroutines.flow.stateIn // Import stateIn
+import kotlinx.coroutines.flow.SharingStarted.Companion.WhileSubscribed
 
 @HiltViewModel
 class TambahTransaksiViewModel @Inject constructor(
     private val uploader: SupabaseStorageUploader,
     private val localTransactionDao: LocalTransactionDao,
+    private val appRepository: AppRepository, // <-- DITAMBAHKAN SEBAGAI PROPERTI
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
+
+    val wallets: StateFlow<List<Wallet>> = appRepository.wallets
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000), // Corrected line
+            initialValue = emptyList()
+        )
 
     init {
         monitorNetworkStatus()

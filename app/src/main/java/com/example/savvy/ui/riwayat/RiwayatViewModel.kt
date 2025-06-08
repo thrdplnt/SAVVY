@@ -29,6 +29,10 @@ import java.io.File
 import java.util.Date
 import java.util.UUID
 import javax.inject.Inject
+import com.example.savvy.data.Wallet
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 
 @HiltViewModel
 class RiwayatViewModel @Inject constructor(
@@ -41,6 +45,13 @@ class RiwayatViewModel @Inject constructor(
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
     private val syncMutex = Mutex() // DEKLARASIKAN MUTEX
+
+    val wallets: StateFlow<List<Wallet>> = appRepository.wallets
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     init {
         Log.d("RiwayatViewModel", "ViewModel initialized")
@@ -59,14 +70,14 @@ class RiwayatViewModel @Inject constructor(
                         id = local.firestoreId ?: "local_${local.id}",
                         clientGeneratedId = local.clientGeneratedId,
                         userId = local.userId,
-                        type = local.type,
+                        type = local.type, // Ini adalah nama dompet
                         amount = local.amount,
                         category = local.category,
                         note = local.note,
                         date = local.date,
                         imageUrl = local.imageUrl,
                         imageUri = local.imageUri,
-                        walletId = local.walletId ?: local.type
+                        walletId = local.walletId ?: "" // Ini adalah ID dompet
                     )
                 }
             }
@@ -75,7 +86,7 @@ class RiwayatViewModel @Inject constructor(
     private val firestoreTransactionsFlow: Flow<List<Transaction>> = flow {
         val user = auth.currentUser
         if (user == null) {
-            emit(emptyList())
+            emit(emptyList<Transaction>())
             return@flow
         }
         try {
@@ -102,8 +113,8 @@ class RiwayatViewModel @Inject constructor(
             }
             emit(firestoreList)
         } catch (e: Exception) {
-            Log.e("RiwayatViewModel", "Error fetching Firestore transactions: $e", e)
-            emit(emptyList())
+            Log.e("RiwayatViewModel", "Firestore fetch error: $e", e)
+            emit(emptyList<Transaction>())
         }
     }
 
@@ -112,45 +123,39 @@ class RiwayatViewModel @Inject constructor(
         firestoreTransactionsFlow
     ) { localTxsFromRoom, firestoreTxs ->
         Log.i("RiwayatVM-Combine", "Combining: ${localTxsFromRoom.size} local, ${firestoreTxs.size} Firestore.")
-        val combinedTransactions = mutableMapOf<String, Transaction>()
+        val transactionMap = mutableMapOf<String, Transaction>()
 
         firestoreTxs.forEach { firestoreTx ->
-            val key = firestoreTx.clientGeneratedId.takeIf { it.isNotBlank() } ?: firestoreTx.id
+            val key = firestoreTx.clientGeneratedId.takeIf { !it.isNullOrBlank() } ?: firestoreTx.id
             if (key.isNotBlank()) {
-                combinedTransactions[key] = firestoreTx
-            } else {
-                Log.w("RiwayatVM-Combine", "Firestore TX memiliki kunci (clientGenId & id) kosong, dilewati: $firestoreTx")
+                transactionMap[key] = firestoreTx
             }
         }
 
-        localTxsFromRoom.forEach { localTx ->
-            val localKey = localTx.clientGeneratedId.takeIf { it.isNotBlank() } ?: localTx.id
-            if (localKey.isBlank()) {
-                Log.e("RiwayatVM-Combine", "Transaksi lokal memiliki clientGeneratedId atau id kosong, dilewati: $localTx")
+        localTxsFromRoom.forEach { mappedLocalTx ->
+            val key = mappedLocalTx.clientGeneratedId.takeIf { !it.isNullOrBlank() } ?: mappedLocalTx.id // Gunakan clientGeneratedId jika ada, jika tidak fallback ke id (yang bisa local_ atau firestoreId)
+            if (key.isBlank()) {
                 return@forEach
             }
 
-            val existingTxInMap = combinedTransactions[localKey]
-
-            if (existingTxInMap != null) {
-                val updatedTx = existingTxInMap.copy(
-                    id = existingTxInMap.id,
-                    imageUri = localTx.imageUri ?: existingTxInMap.imageUri,
-                    imageUrl = existingTxInMap.imageUrl ?: localTx.imageUrl
+            val existingInMap = transactionMap[key]
+            if (existingInMap != null) {
+                transactionMap[key] = existingInMap.copy(
+                    imageUri = mappedLocalTx.imageUri ?: existingInMap.imageUri,
+                    imageUrl = mappedLocalTx.imageUrl ?: existingInMap.imageUrl, // Prioritaskan yang lebih baru/ada
+                    type = mappedLocalTx.type, // Ambil dari lokal karena mungkin nama dompet di lokal lebih update jika belum sync
+                    amount = mappedLocalTx.amount,
+                    category = mappedLocalTx.category,
+                    note = mappedLocalTx.note,
+                    date = mappedLocalTx.date,
+                    walletId = mappedLocalTx.walletId
                 )
-                combinedTransactions[localKey] = updatedTx
             } else {
-                combinedTransactions[localKey] = localTx
+                transactionMap[key] = mappedLocalTx
             }
         }
 
-        combinedTransactions.values.map { tx ->
-            if (tx.id.startsWith("local_")) {
-                tx
-            } else {
-                tx.copy(id = tx.id)
-            }
-        }.distinctBy { it.id }.sortedByDescending { it.date }
+        transactionMap.values.sortedByDescending { it.date }
     }.catch { e ->
         Log.e("RiwayatViewModel", "Combine operator error: $e", e)
         emit(emptyList<Transaction>())

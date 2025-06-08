@@ -50,15 +50,18 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.savvy.ui.wallet.WalletViewModel
 
 @Composable
 fun TambahTransaksiScreen(
     navController: NavController,
     viewModel: TambahTransaksiViewModel = hiltViewModel(),
+    walletViewModel: WalletViewModel = hiltViewModel(),
     transactionId: String? = null
 ) {
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
+    val walletsState by viewModel.wallets.collectAsState()
 
     var transactionKind by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("Tunai") } // Ini adalah sumber dana/dompet
@@ -83,7 +86,10 @@ fun TambahTransaksiScreen(
     var initialFirestoreIdForEdit by remember { mutableStateOf<String?>(null) }
 
     val transactionWalletTypes = listOf("Tunai", "Non-Tunai", "Tabungan")
-    var selectedWalletType by remember { mutableStateOf(type) } // State untuk dropdown dompet
+//    var selectedWalletType by remember { mutableStateOf(type) } // State untuk dropdown dompet
+
+    var selectedWalletIdState by remember { mutableStateOf("") } // Menyimpan ID dompet yang dipilih
+    var selectedWalletNameState by remember { mutableStateOf("Pilih Dompet") } // Menyimpan NAMA dompet yang dipilih
 
     val transactionKinds = listOf("Pemasukan", "Pengeluaran")
     val expenseCategories = listOf(
@@ -91,12 +97,36 @@ fun TambahTransaksiScreen(
         "Tagihan", "Kesehatan", "Belanja", "Uang Keluar"
     )
 
+    // Efek untuk menginisialisasi pilihan dompet saat daftar dompet berubah atau saat mode edit
+    LaunchedEffect(walletsState, loadedTransactionForEdit, isEditMode) {
+        if (!isEditMode && walletsState.isNotEmpty() && selectedWalletIdState.isBlank()) {
+            // Set default untuk mode tambah baru jika dompet sudah dimuat
+            val defaultWallet = walletsState.find { it.name.equals("Tunai", ignoreCase = true) } ?: walletsState.firstOrNull()
+            defaultWallet?.let {
+                selectedWalletIdState = it.id
+                selectedWalletNameState = it.name
+            }
+        } else if (isEditMode && loadedTransactionForEdit != null) {
+            // Jika mode edit dan data transaksi sudah dimuat
+            val currentWallet = walletsState.find { it.id == loadedTransactionForEdit!!.walletId }
+            if (currentWallet != null) {
+                selectedWalletIdState = currentWallet.id
+                selectedWalletNameState = currentWallet.name
+            } else if (!loadedTransactionForEdit!!.walletId.isNullOrBlank()){
+                // Jika walletId dari transaksi lama ada tapi tidak ditemukan di daftar dompet saat ini
+                selectedWalletNameState = loadedTransactionForEdit!!.type // type di Transaction adalah nama dompet lama
+                selectedWalletIdState = loadedTransactionForEdit!!.walletId
+            }
+        }
+    }
+
     LaunchedEffect(transactionId) {
         if (transactionId == null) {
             isEditMode = false
             transactionKind = ""
             type = transactionWalletTypes.firstOrNull() ?: "Tunai"
-            selectedWalletType = type
+            selectedWalletIdState = type
+            selectedWalletNameState = ""
             amount = ""
             category = ""
             note = ""
@@ -141,7 +171,7 @@ fun TambahTransaksiScreen(
 
                         transactionKind = if (localTx.category == "Pemasukan") "Pemasukan" else "Pengeluaran"
                         type = localTx.type
-                        selectedWalletType = localTx.walletId ?: localTx.type
+                        selectedWalletIdState = localTx.walletId ?: localTx.type
                         amount = localTx.amount.toString()
                         category = localTx.category
                         note = localTx.note
@@ -174,7 +204,7 @@ fun TambahTransaksiScreen(
 
                             transactionKind = if (trans.category == "Pemasukan") "Pemasukan" else "Pengeluaran"
                             type = trans.type
-                            selectedWalletType = trans.walletId.ifBlank { trans.type }
+                            selectedWalletIdState = trans.walletId.ifBlank { trans.type }
                             amount = trans.amount.toString()
                             category = trans.category
                             note = trans.note
@@ -249,13 +279,14 @@ fun TambahTransaksiScreen(
 
         SavvyDropdownMenu(
             label = "Pilih Dompetku",
-            items = transactionWalletTypes,
-            selectedItem = selectedWalletType,
-            onItemSelected = {
-                selectedWalletType = it
-                type = it // 'type' di objek Transaction adalah nama dompetnya
+            items = walletsState.map { it.name }.ifEmpty { listOf("Memuat dompet...") }, // Daftar nama dompet
+            selectedItem = if (walletsState.isEmpty() && selectedWalletIdState.isBlank()) "Memuat..." else selectedWalletNameState,
+            onItemSelected = { walletName ->
+                selectedWalletNameState = walletName
+                selectedWalletIdState = walletsState.find { it.name == walletName }?.id ?: ""
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = walletsState.isNotEmpty() // Aktifkan jika dompet sudah dimuat
         )
         Spacer(Modifier.height(16.dp))
 
@@ -332,7 +363,7 @@ fun TambahTransaksiScreen(
         Button(
             onClick = {
                 if (transactionKind.isEmpty()) { Toast.makeText(context, "Jenis transaksi harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
-                if (selectedWalletType.isEmpty()) { Toast.makeText(context, "Dompet harus dipilih", Toast.LENGTH_SHORT).show(); return@Button } // Validasi selectedWalletType
+                if (selectedWalletIdState.isEmpty()) { Toast.makeText(context, "Dompet harus dipilih", Toast.LENGTH_SHORT).show(); return@Button } // Validasi selectedWalletType
                 if (amount.isEmpty()) { Toast.makeText(context, "Jumlah uang harus diisi", Toast.LENGTH_SHORT).show(); return@Button }
                 val amountLongParsed = amount.toLongOrNull()
                 if (amountLongParsed == null || amountLongParsed <= 0) { Toast.makeText(context, "Jumlah harus angka positif", Toast.LENGTH_SHORT).show(); return@Button }
@@ -355,12 +386,12 @@ fun TambahTransaksiScreen(
 
                 val transactionDataForViewModel = Transaction(
                     userId = user.uid,
-                    type = selectedWalletType, // Gunakan selectedWalletType untuk type dompet
+                    type = selectedWalletNameState, // Gunakan selectedWalletType untuk type dompet
                     amount = amountLongParsed,
                     category = category,
                     note = note,
                     date = date,
-                    walletId = selectedWalletType, // walletId juga diisi dengan selectedWalletType
+                    walletId = selectedWalletIdState, // walletId juga diisi dengan selectedWalletType
                     imageUrl = if (isEditMode && newImageUri == null && !isImageRemovedByUser) existingImageUrlFromDb else null,
                     clientGeneratedId = finalClientGeneratedId, // PASTIKAN clientGeneratedId ada
                     imageUri = null

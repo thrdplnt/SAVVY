@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Download
 import com.example.savvy.R
 import com.example.savvy.utils.ExportUtils
 import kotlinx.coroutines.launch
+import com.example.savvy.data.Wallet
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,23 +57,26 @@ fun RiwayatScreen(
 ) {
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
+    val walletsState by viewModel.wallets.collectAsState()
+    val transactions by viewModel.transactions.collectAsState()
+
 
     // State untuk transaksi
-    val transactions by viewModel.transactions.collectAsState()
     var filteredTransactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
 
     // State untuk filter dan saldo
     var totalSaldo by rememberSaveable { mutableLongStateOf(0L) }
-    var saldoTunai by rememberSaveable { mutableLongStateOf(0L) }
-    var saldoTabungan by rememberSaveable { mutableLongStateOf(0L) }
-    var saldoNonTunai by rememberSaveable { mutableLongStateOf(0L) }
     var totalPemasukan by rememberSaveable { mutableLongStateOf(0L) }
     var totalPengeluaran by rememberSaveable { mutableLongStateOf(0L) }
     var isLoading by remember { mutableStateOf(true) }
 
     // State untuk filter Dompetku
-    val walletOptions = listOf("Semua", "Tunai", "Tabungan", "Non-Tunai")
-    var selectedWallet by remember { mutableStateOf("Semua") }
+    val dynamicWalletOptions = remember(walletsState) {
+        listOf("Semua") + walletsState.map { it.name }
+    }
+    var selectedWallet by remember(dynamicWalletOptions) {
+        mutableStateOf(dynamicWalletOptions.firstOrNull() ?: "Semua")
+    }
     var walletExpanded by remember { mutableStateOf(false) }
 
     // State untuk filter Rentang
@@ -97,221 +101,276 @@ fun RiwayatScreen(
     // State untuk pie chart
     val categoryData = remember { mutableStateMapOf<String, Pair<Int, Long>>() }
     var totalChartAmount by rememberSaveable { mutableLongStateOf(0L) }
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
-    var selectedPercentage by remember { mutableStateOf<Float?>(null) }
-
-    // Warna untuk pie chart
-    val categoryColors = mapOf(
-        "Pemasukan" to Color(0xFF4CAF50), // Hijau untuk pemasukan
-        "Makanan" to Color(0xFF6256D1),
-        "Transportasi" to Color(0xFF83E46F),
-        "Hiburan" to Color(0xFF4894FF),
-        "Pendidikan" to Color(0xFFFFD300),
-        "Tagihan" to Color(0xFFFF4A4A),
-        "Kesehatan" to Color(0xFF9DCFFF),
-        "Belanja" to Color(0xFFFF458A),
-        "Uang Keluar" to Color(0xFF76E7E7)
-    )
 
     // Fungsi untuk memformat tanggal untuk subtitle
     val subtitleDateFormat = SimpleDateFormat("dd MMM yyyy", Locale("id"))
     val subtitleMonthFormat = SimpleDateFormat("MMMM yyyy", Locale("id"))
 
     // Membuat string dinamis untuk subtitle grafik
-    val filterSubtitle = remember(
-        selectedWallet,
-        selectedRange,
-        selectedMonth.timeInMillis, // Gunakan timeInMillis sebagai key
-        startDate.timeInMillis,     // Gunakan timeInMillis sebagai key
-        endDate.timeInMillis        // Gunakan timeInMillis sebagai key
-    ) {
+    val filterSubtitle = remember(selectedWallet, selectedRange, selectedMonth.timeInMillis, startDate.timeInMillis, endDate.timeInMillis) {
         val dompetInfo = "Dompet: $selectedWallet"
         val periodeInfo = when (selectedRange) {
             "Pilih Bulan" -> "Periode: ${subtitleMonthFormat.format(selectedMonth.time)}"
             "Pilih Tanggal" -> "Periode: ${subtitleDateFormat.format(startDate.time)} - ${subtitleDateFormat.format(endDate.time)}"
             "1 Hari Terakhir" -> {
-                // Untuk "1 Hari Terakhir", kita tampilkan tanggal hari ini
                 val todayCal = Calendar.getInstance()
                 "Periode: ${subtitleDateFormat.format(todayCal.time)}"
             }
             "7 Hari Terakhir" -> {
-                // Untuk "7 Hari Terakhir", kita tampilkan rentang 7 hari ke belakang dari hari ini
                 val endCal = Calendar.getInstance()
-                val startCal = Calendar.getInstance()
-                startCal.add(Calendar.DAY_OF_YEAR, -6)
+                val startCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -6) }
                 "Periode: ${subtitleDateFormat.format(startCal.time)} - ${subtitleDateFormat.format(endCal.time)}"
             }
-            else -> "Periode: $selectedRange" // Fallback jika ada range lain
+            else -> "Periode: $selectedRange"
         }
-        val subtitle = "$dompetInfo - $periodeInfo"
-        Log.d("RiwayatScreen", "Subtitle Dihitung Ulang: $subtitle") // Tambahkan log untuk debug
-        subtitle
+        "$dompetInfo - $periodeInfo"
     }
 
     // Hitung saldo, filter transaksi, dan data pie chart
-    fun filterTransactions() {
-        Log.d(
-            "RiwayatScreen",
-            "Filtering transactions. Wallet: $selectedWallet, Range: $selectedRange"
-        )
+//    fun filterTransactions() {
+//        Log.d(
+//            "RiwayatScreen",
+//            "Filtering transactions. Wallet: $selectedWallet, Range: $selectedRange"
+//        )
+//
+//
+//        val startTime = System.currentTimeMillis()
+//        var pemasukan = 0L
+//        var pengeluaran = 0L
+//        var tunai = 0L
+//        var tabungan = 0L
+//        var nonTunai = 0L
+//        val categoryMap = mutableMapOf<String, Pair<Int, Long>>()
+//
+//        val calendar = Calendar.getInstance()
+//        val currentDate = calendar.time
+//
+//        val startDateFilter: Date
+//        var endDateFilter: Date = currentDate
+//
+//        when (selectedRange) {
+//            "1 Hari Terakhir" -> {
+//                calendar.add(Calendar.DAY_OF_YEAR, -1)
+//                calendar.set(Calendar.HOUR_OF_DAY, 0)
+//                calendar.set(Calendar.MINUTE, 0)
+//                calendar.set(Calendar.SECOND, 0)
+//                calendar.set(Calendar.MILLISECOND, 0)
+//                startDateFilter = calendar.time
+//                calendar.time = currentDate
+//                calendar.set(Calendar.HOUR_OF_DAY, 23)
+//                calendar.set(Calendar.MINUTE, 59)
+//                calendar.set(Calendar.SECOND, 59)
+//                calendar.set(Calendar.MILLISECOND, 999)
+//                endDateFilter = calendar.time
+//            }
+//
+//            "7 Hari Terakhir" -> {
+//                calendar.add(Calendar.WEEK_OF_YEAR, -1)
+//                calendar.set(Calendar.HOUR_OF_DAY, 0)
+//                calendar.set(Calendar.MINUTE, 0)
+//                calendar.set(Calendar.SECOND, 0)
+//                calendar.set(Calendar.MILLISECOND, 0)
+//                startDateFilter = calendar.time
+//                calendar.time = currentDate
+//                calendar.set(Calendar.HOUR_OF_DAY, 23)
+//                calendar.set(Calendar.MINUTE, 59)
+//                calendar.set(Calendar.SECOND, 59)
+//                calendar.set(Calendar.MILLISECOND, 999)
+//                endDateFilter = calendar.time
+//            }
+//
+//            "Pilih Bulan" -> {
+//                calendar.time = selectedMonth.time
+//                calendar.set(Calendar.DAY_OF_MONTH, 1)
+//                calendar.set(Calendar.HOUR_OF_DAY, 0)
+//                calendar.set(Calendar.MINUTE, 0)
+//                calendar.set(Calendar.SECOND, 0)
+//                calendar.set(Calendar.MILLISECOND, 0)
+//                startDateFilter = calendar.time
+//                calendar.set(
+//                    Calendar.DAY_OF_MONTH,
+//                    calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+//                )
+//                calendar.set(Calendar.HOUR_OF_DAY, 23)
+//                calendar.set(Calendar.MINUTE, 59)
+//                calendar.set(Calendar.SECOND, 59)
+//                calendar.set(Calendar.MILLISECOND, 999)
+//                endDateFilter = calendar.time
+//            }
+//
+//            "Pilih Tanggal" -> {
+//                calendar.time = startDate.time
+//                calendar.set(Calendar.HOUR_OF_DAY, 0)
+//                calendar.set(Calendar.MINUTE, 0)
+//                calendar.set(Calendar.SECOND, 0)
+//                calendar.set(Calendar.MILLISECOND, 0)
+//                startDateFilter = calendar.time
+//                calendar.time = endDate.time
+//                calendar.set(Calendar.HOUR_OF_DAY, 23)
+//                calendar.set(Calendar.MINUTE, 59)
+//                calendar.set(Calendar.SECOND, 59)
+//                calendar.set(Calendar.MILLISECOND, 999)
+//                endDateFilter = calendar.time
+//            }
+//
+//            else -> {
+//                calendar.set(Calendar.DAY_OF_MONTH, 1)
+//                calendar.set(Calendar.HOUR_OF_DAY, 0)
+//                calendar.set(Calendar.MINUTE, 0)
+//                calendar.set(Calendar.SECOND, 0)
+//                calendar.set(Calendar.MILLISECOND, 0)
+//                startDateFilter = calendar.time
+//                calendar.time = currentDate
+//                endDateFilter = calendar.time
+//            }
+//        }
+//
+//        val filtered = mutableListOf<Transaction>()
+//        transactions.forEach { transaction ->
+//            val transactionDate = transaction.date ?: return@forEach
+//            val matchesWallet = selectedWallet == "Semua" || transaction.type == selectedWallet
+//            val matchesDate =
+//                !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
+//            if (matchesWallet && matchesDate) {
+//                filtered.add(transaction)
+//                val amount = transaction.amount.toLong()
+//                if (transaction.category == "Pemasukan") {
+//                    pemasukan += amount
+//                    // Tambahkan Pemasukan ke pie chart
+//                    val currentData = categoryMap["Pemasukan"] ?: Pair(0, 0L)
+//                    categoryMap["Pemasukan"] =
+//                        Pair(currentData.first + 1, currentData.second + amount)
+//                } else {
+//                    pengeluaran += amount
+//                    // Tambahkan kategori pengeluaran ke pie chart
+//                    val currentData = categoryMap[transaction.category] ?: Pair(0, 0L)
+//                    categoryMap[transaction.category] =
+//                        Pair(currentData.first + 1, currentData.second + amount)
+//                }
+//            }
+//
+//            // Hitung saldo per dompet
+//            val amount = transaction.amount.toLong()
+//            when (transaction.type) {
+//                "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
+//                "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
+//                "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunai += amount else nonTunai -= amount
+//            }
+//        }
+//
+//        totalPemasukan = pemasukan
+//        totalPengeluaran = pengeluaran
+//        totalSaldo = tunai + tabungan + nonTunai
+//        filteredTransactions = filtered.sortedByDescending { it.date }
+//        categoryData.clear()
+//        categoryData.putAll(categoryMap)
+//        totalChartAmount = pemasukan + pengeluaran
+//        Log.d(
+//            "RiwayatScreen",
+//            "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms, " +
+//                    "Pie chart data: $categoryMap, Total: $totalChartAmount"
+//        )
+//    }
+
+    fun calculateAndFilterData() {
+        Log.d("RiwayatScreen", "Filter triggered. VM_TX_Size: ${transactions.size}, Wallet: $selectedWallet, Range: $selectedRange")
         val startTime = System.currentTimeMillis()
-        var pemasukan = 0L
-        var pengeluaran = 0L
-        var tunai = 0L
-        var tabungan = 0L
-        var nonTunai = 0L
-        val categoryMap = mutableMapOf<String, Pair<Int, Long>>()
+        var currentPemasukanFiltered = 0L
+        var currentPengeluaranFiltered = 0L
 
-        val calendar = Calendar.getInstance()
-        val currentDate = calendar.time
+        // 1. Hitung Saldo Total dari SEMUA transaksi (tidak terpengaruh filter)
+        val saldoPerDompet = mutableMapOf<String, Long>()
+        walletsState.forEach { wallet -> saldoPerDompet[wallet.name] = 0L }
 
-        val startDateFilter: Date
-        var endDateFilter: Date = currentDate
+        transactions.forEach { transaction ->
+            val amount = transaction.amount
+            val walletName = transaction.type
+            val currentBalance = saldoPerDompet[walletName] ?: 0L
+            saldoPerDompet[walletName] = if (transaction.category == "Pemasukan") currentBalance + amount else currentBalance - amount
+        }
+        totalSaldo = saldoPerDompet.values.sum()
+        Log.d("RiwayatScreen", "Total Saldo Recalculated: $totalSaldo from ${saldoPerDompet.size} wallets")
+
+
+        // 2. Filter transaksi untuk tampilan list dan kalkulasi Pemasukan/Pengeluaran terfilter
+        val today = Calendar.getInstance()
+        val startDateFilterCal: Calendar = Calendar.getInstance()
+        val endDateFilterCal: Calendar = Calendar.getInstance()
+
+        endDateFilterCal.time = today.time
+        endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23); endDateFilterCal.set(Calendar.MINUTE, 59); endDateFilterCal.set(Calendar.SECOND, 59); endDateFilterCal.set(Calendar.MILLISECOND, 999)
 
         when (selectedRange) {
             "1 Hari Terakhir" -> {
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
-                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                calendar.set(Calendar.MINUTE, 0)
-                calendar.set(Calendar.SECOND, 0)
-                calendar.set(Calendar.MILLISECOND, 0)
-                startDateFilter = calendar.time
-                calendar.time = currentDate
-                calendar.set(Calendar.HOUR_OF_DAY, 23)
-                calendar.set(Calendar.MINUTE, 59)
-                calendar.set(Calendar.SECOND, 59)
-                calendar.set(Calendar.MILLISECOND, 999)
-                endDateFilter = calendar.time
+                startDateFilterCal.time = today.time
+                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
             }
-
             "7 Hari Terakhir" -> {
-                calendar.add(Calendar.WEEK_OF_YEAR, -1)
-                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                calendar.set(Calendar.MINUTE, 0)
-                calendar.set(Calendar.SECOND, 0)
-                calendar.set(Calendar.MILLISECOND, 0)
-                startDateFilter = calendar.time
-                calendar.time = currentDate
-                calendar.set(Calendar.HOUR_OF_DAY, 23)
-                calendar.set(Calendar.MINUTE, 59)
-                calendar.set(Calendar.SECOND, 59)
-                calendar.set(Calendar.MILLISECOND, 999)
-                endDateFilter = calendar.time
+                startDateFilterCal.time = today.time
+                startDateFilterCal.add(Calendar.DAY_OF_YEAR, -6)
+                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
             }
-
             "Pilih Bulan" -> {
-                calendar.time = selectedMonth.time
-                calendar.set(Calendar.DAY_OF_MONTH, 1)
-                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                calendar.set(Calendar.MINUTE, 0)
-                calendar.set(Calendar.SECOND, 0)
-                calendar.set(Calendar.MILLISECOND, 0)
-                startDateFilter = calendar.time
-                calendar.set(
-                    Calendar.DAY_OF_MONTH,
-                    calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
-                )
-                calendar.set(Calendar.HOUR_OF_DAY, 23)
-                calendar.set(Calendar.MINUTE, 59)
-                calendar.set(Calendar.SECOND, 59)
-                calendar.set(Calendar.MILLISECOND, 999)
-                endDateFilter = calendar.time
+                startDateFilterCal.time = selectedMonth.time
+                startDateFilterCal.set(Calendar.DAY_OF_MONTH, 1); startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
+                endDateFilterCal.time = selectedMonth.time
+                endDateFilterCal.set(Calendar.DAY_OF_MONTH, endDateFilterCal.getActualMaximum(Calendar.DAY_OF_MONTH)); endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23); endDateFilterCal.set(Calendar.MINUTE, 59); endDateFilterCal.set(Calendar.SECOND, 59); endDateFilterCal.set(Calendar.MILLISECOND, 999)
             }
-
             "Pilih Tanggal" -> {
-                calendar.time = startDate.time
-                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                calendar.set(Calendar.MINUTE, 0)
-                calendar.set(Calendar.SECOND, 0)
-                calendar.set(Calendar.MILLISECOND, 0)
-                startDateFilter = calendar.time
-                calendar.time = endDate.time
-                calendar.set(Calendar.HOUR_OF_DAY, 23)
-                calendar.set(Calendar.MINUTE, 59)
-                calendar.set(Calendar.SECOND, 59)
-                calendar.set(Calendar.MILLISECOND, 999)
-                endDateFilter = calendar.time
+                startDateFilterCal.time = startDate.time; startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
+                endDateFilterCal.time = endDate.time; endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23); endDateFilterCal.set(Calendar.MINUTE, 59); endDateFilterCal.set(Calendar.SECOND, 59); endDateFilterCal.set(Calendar.MILLISECOND, 999)
             }
-
-            else -> {
-                calendar.set(Calendar.DAY_OF_MONTH, 1)
-                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                calendar.set(Calendar.MINUTE, 0)
-                calendar.set(Calendar.SECOND, 0)
-                calendar.set(Calendar.MILLISECOND, 0)
-                startDateFilter = calendar.time
-                calendar.time = currentDate
-                endDateFilter = calendar.time
-            }
+            else -> { startDateFilterCal.add(Calendar.YEAR, -100) }
         }
+        val startDateFilterDate = startDateFilterCal.time
+        val endDateFilterDate = endDateFilterCal.time
 
-        val filtered = mutableListOf<Transaction>()
-        transactions.forEach { transaction ->
-            val transactionDate = transaction.date ?: return@forEach
+        val finalFilteredList = transactions.filter { transaction ->
+            val transactionDate = transaction.date ?: return@filter false
             val matchesWallet = selectedWallet == "Semua" || transaction.type == selectedWallet
-            val matchesDate =
-                !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
-            if (matchesWallet && matchesDate) {
-                filtered.add(transaction)
-                val amount = transaction.amount.toLong()
-                if (transaction.category == "Pemasukan") {
-                    pemasukan += amount
-                    // Tambahkan Pemasukan ke pie chart
-                    val currentData = categoryMap["Pemasukan"] ?: Pair(0, 0L)
-                    categoryMap["Pemasukan"] =
-                        Pair(currentData.first + 1, currentData.second + amount)
-                } else {
-                    pengeluaran += amount
-                    // Tambahkan kategori pengeluaran ke pie chart
-                    val currentData = categoryMap[transaction.category] ?: Pair(0, 0L)
-                    categoryMap[transaction.category] =
-                        Pair(currentData.first + 1, currentData.second + amount)
-                }
-            }
-
-            // Hitung saldo per dompet
-            val amount = transaction.amount.toLong()
-            when (transaction.type) {
-                "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
-                "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
-                "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunai += amount else nonTunai -= amount
-            }
+            val matchesDate = !transactionDate.before(startDateFilterDate) && !transactionDate.after(endDateFilterDate)
+            matchesWallet && matchesDate
         }
 
-        totalPemasukan = pemasukan
-        totalPengeluaran = pengeluaran
-        saldoTunai = tunai
-        saldoTabungan = tabungan
-        saldoNonTunai = nonTunai
-        totalSaldo = tunai + tabungan + nonTunai
-        filteredTransactions = filtered.sortedByDescending { it.date }
-        categoryData.clear()
-        categoryData.putAll(categoryMap)
-        totalChartAmount = pemasukan + pengeluaran
-        Log.d(
-            "RiwayatScreen",
-            "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms, " +
-                    "Pie chart data: $categoryMap, Total: $totalChartAmount"
-        )
+        finalFilteredList.forEach {
+            if (it.category == "Pemasukan") currentPemasukanFiltered += it.amount
+            else currentPengeluaranFiltered += it.amount
+        }
+
+        totalPemasukan = currentPemasukanFiltered
+        totalPengeluaran = currentPengeluaranFiltered
+        filteredTransactions = finalFilteredList.sortedByDescending { it.date }
+        Log.d("RiwayatScreen", "Filter End. Pemasukan(filter): $totalPemasukan, Pengeluaran(filter): $totalPengeluaran. Filtered List: ${filteredTransactions.size}")
     }
 
-    LaunchedEffect(
-        selectedWallet,
-        selectedRange,
-        selectedMonth.timeInMillis,
-        startDate.timeInMillis,
-        endDate.timeInMillis,
-        transactions
-    ) {
+    LaunchedEffect(selectedWallet, selectedRange, selectedMonth.timeInMillis, startDate.timeInMillis, endDate.timeInMillis, transactions) {
         isLoading = true
         try {
-            filterTransactions()
+            calculateAndFilterData() // Panggil fungsi yang sudah di-refactor
         } catch (e: Exception) {
-            Log.e("RiwayatScreen", "Error filtering transactions: $e")
+            Log.e("RiwayatScreen", "Error in LaunchedEffect: $e", e)
         } finally {
             isLoading = false
         }
     }
+
+//    LaunchedEffect(
+//        selectedWallet,
+//        selectedRange,
+//        selectedMonth.timeInMillis,
+//        startDate.timeInMillis,
+//        endDate.timeInMillis,
+//        transactions
+//    ) {
+//        isLoading = true
+//        try {
+//            filterTransactions()
+//        } catch (e: Exception) {
+//            Log.e("RiwayatScreen", "Error filtering transactions: $e")
+//        } finally {
+//            isLoading = false
+//        }
+//    }
 
     // Dialog untuk memilih tanggal mulai
     if (showStartDatePicker) {
@@ -563,7 +622,7 @@ fun RiwayatScreen(
                             Text(selectedWallet, style = MaterialTheme.typography.bodyLarge); Icon(Icons.Default.ArrowDropDown, "Dropdown", tint = Navy)
                         }
                         DropdownMenu(expanded = walletExpanded, onDismissRequest = { walletExpanded = false }, modifier = Modifier.background(White).fillMaxWidth()) {
-                            walletOptions.forEach { option -> DropdownMenuItem(text = { Text(option, style = MaterialTheme.typography.bodyLarge) }, onClick = { selectedWallet = option; walletExpanded = false }) }
+                            dynamicWalletOptions.forEach { option -> DropdownMenuItem(text = { Text(option, style = MaterialTheme.typography.bodyLarge) }, onClick = { selectedWallet = option; walletExpanded = false }) }
                         }
                     }
                     Box(modifier = Modifier.weight(1f)) { /* Dropdown Rentang */
@@ -731,7 +790,7 @@ fun RiwayatScreen(
                             .background(White)
                             .fillMaxWidth()
                     ) {
-                        walletOptions.forEach { option ->
+                        dynamicWalletOptions.forEach { option ->
                             DropdownMenuItem(
                                 text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
                                 onClick = {
@@ -884,7 +943,7 @@ fun RiwayatScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Grafik Pemasukan dan Pengeluaran", // JUDUL UTAMA GRAFIK
+                        text = "Diagram Pemasukan dan Pengeluaran", // JUDUL UTAMA GRAFIK
                         style = MaterialTheme.typography.titleMedium, // Anda bisa sesuaikan stylenya
                         color = Navy,
                         modifier = Modifier.padding(bottom = 4.dp) // Jarak ke subjudul

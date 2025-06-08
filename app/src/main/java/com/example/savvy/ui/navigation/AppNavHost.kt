@@ -22,6 +22,7 @@ import com.example.savvy.ui.riwayat.CategoryDetailScreen
 import androidx.navigation.NavType
 import com.example.savvy.data.Screen
 import com.example.savvy.ui.riwayat.DetailTransaksiScreen
+import com.example.savvy.ui.wallet.DompetkuScreen
 
 @Composable
 fun AppNavHost(
@@ -71,7 +72,7 @@ fun AppNavHost(
             LoginScreen(navController = navController)
         }
         composable(Screen.Home.route) {
-            HomeScreen(navController = navController, onClearSearch = onClearSearch)
+            HomeScreen(navController = navController)
         }
         composable(Screen.Riwayat.route) {
             RiwayatScreen(navController = navController)
@@ -91,6 +92,9 @@ fun AppNavHost(
         }
         composable(Screen.EditProfile.route) {
             EditProfileScreen(navController = navController)
+        }
+        composable(Screen.Dompetku.route) {
+            DompetkuScreen(navController = navController)
         }
         composable(
             route = Screen.CategoryDetail.route,

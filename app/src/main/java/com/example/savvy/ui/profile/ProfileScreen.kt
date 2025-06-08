@@ -30,6 +30,7 @@ import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White
 import com.google.firebase.auth.FirebaseAuth
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 
 @Composable
 fun ProfileScreen(
@@ -47,7 +48,7 @@ fun ProfileScreen(
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         // Foto Profil
         Box(
@@ -173,6 +174,41 @@ fun ProfileScreen(
                     modifier = Modifier.size(24.dp)
                 )
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Beige, shape = RoundedCornerShape(8.dp))
+                        .clickable { navController.navigate(Screen.Dompetku.route) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AccountBalanceWallet,
+                            contentDescription = "Dompetku",
+                            tint = Navy,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Dompetku",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Navy
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = "Panah",
+                        tint = Navy,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
 
             Spacer(modifier = Modifier.height(24.dp))
 

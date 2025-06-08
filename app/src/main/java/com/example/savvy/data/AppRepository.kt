@@ -3,29 +3,47 @@ package com.example.savvy.data
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.ktx.toObject
+import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.tasks.await
 import java.util.Date
 import java.util.UUID
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class AppRepository @Inject constructor(
     private val localTransactionDao: LocalTransactionDao,
-    private val anggaranDao: AnggaranDao // <-- Tambahkan AnggaranDao
+    private val anggaranDao: AnggaranDao
 ) {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
 
-    private val _wallets = MutableStateFlow<List<Wallet>>(emptyList())
-    val wallets: Flow<List<Wallet>> = _wallets
+    //    private val _wallets = MutableStateFlow<List<Wallet>>(emptyList())
+    val wallets: Flow<List<Wallet>> = auth.currentUser?.uid?.let { userId ->
+        db.collection("users").document(userId).collection("wallets")
+            .orderBy("name")
+            .snapshots()
+            .mapNotNull { snapshot ->
+                snapshot.documents.mapNotNull { doc ->
+                    doc.toObject(Wallet::class.java)?.copy(id = doc.id, userId = userId)
+                }
+            }
+    } ?: flowOf(emptyList())
+
+    private val _transactions = MutableStateFlow<List<Transaction>>(emptyList())
+    val transactions: Flow<List<Transaction>> = _transactions
 
     private val _firestoreAnggaran = MutableStateFlow<List<Anggaran>>(emptyList())
     private var anggaranListenerRegistration: ListenerRegistration? = null
+    private var transactionsListenerRegistration: ListenerRegistration? = null // Tambahkan untuk transaksi
 
     private fun getLocalAnggaranFlow(userId: String): Flow<List<LocalAnggaran>> {
         return anggaranDao.getAllAnggaran(userId)
@@ -61,7 +79,10 @@ class AppRepository @Inject constructor(
                             clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { localAnggaran.clientGeneratedId }
                         ))
                     }
-                    combinedList.add(localAnggaran.copy(isSynced = true, clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { localAnggaran.clientGeneratedId }))
+                    combinedList.add(localAnggaran.copy(
+                        isSynced = true,
+                        clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { localAnggaran.clientGeneratedId }
+                    ))
                 } else {
                     combinedList.add(localAnggaran)
                 }
@@ -83,7 +104,9 @@ class AppRepository @Inject constructor(
                             clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { existingLocalByClient.clientGeneratedId }
                         ))
                         combinedList.add(existingLocalByClient.copy(
-                            firestoreId = firestoreAnggaran.id, isSynced = true, clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { existingLocalByClient.clientGeneratedId }
+                            firestoreId = firestoreAnggaran.id,
+                            isSynced = true,
+                            clientGeneratedId = firestoreAnggaran.clientGeneratedId.ifBlank { existingLocalByClient.clientGeneratedId }
                         ))
                     } else {
                         val newLocalAnggaran = LocalAnggaran(
@@ -109,19 +132,6 @@ class AppRepository @Inject constructor(
     init {
         val userId = auth.currentUser?.uid
         if (userId != null) {
-            db.collection("users").document(userId).collection("wallets")
-                .addSnapshotListener { snapshot, e ->
-                    if (e != null) {
-                        Log.e("AppRepository", "Error fetching wallets: $e")
-                        _wallets.value = emptyList()
-                        return@addSnapshotListener
-                    }
-                    val walletList = snapshot?.documents?.mapNotNull { doc ->
-                        doc.toObject(Wallet::class.java)?.copy(id = doc.id, userId = userId)
-                    } ?: emptyList()
-                    _wallets.value = walletList
-                }
-
             anggaranListenerRegistration = db.collection("anggarans")
                 .whereEqualTo("userId", userId)
                 .addSnapshotListener { snapshot, e ->
@@ -130,13 +140,38 @@ class AppRepository @Inject constructor(
                         _firestoreAnggaran.value = emptyList()
                         return@addSnapshotListener
                     }
-                    val anggaranList = snapshot?.documents?.mapNotNull { doc ->
+                    val anggaranListResult = snapshot?.documents?.mapNotNull { doc ->
                         doc.toObject(Anggaran::class.java)?.copy(id = doc.id)
                     } ?: emptyList()
-                    _firestoreAnggaran.value = anggaranList
-                    Log.d("AppRepository", "Real-time Anggaran update: ${anggaranList.size} items fetched.")
+                    _firestoreAnggaran.value = anggaranListResult
+                    Log.d("AppRepository", "Real-time Anggaran update: ${anggaranListResult.size} items fetched.")
+                }
+
+            // Listener untuk Transactions (DITAMBAHKAN KEMBALI)
+            transactionsListenerRegistration = db.collection("transactions")
+                .whereEqualTo("userId", userId)
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) {
+                        Log.e("AppRepository", "Error fetching transactions: $e")
+                        _transactions.value = emptyList()
+                        return@addSnapshotListener
+                    }
+                    val transactionList = snapshot?.documents?.mapNotNull { doc ->
+                        doc.toObject(Transaction::class.java)?.copy(id = doc.id, userId = userId)
+                    } ?: emptyList()
+                    _transactions.value = transactionList
+                    Log.d("AppRepository", "Real-time Transaction update: ${transactionList.size} items fetched.")
                 }
         }
+    }
+
+    // Fungsi untuk melepas listener jika diperlukan (misalnya saat logout)
+    fun stopListeners() {
+        anggaranListenerRegistration?.remove()
+        transactionsListenerRegistration?.remove()
+        anggaranListenerRegistration = null
+        transactionsListenerRegistration = null
+        Log.d("AppRepository", "All listeners stopped.")
     }
 
     fun stopAnggaranListener() {
@@ -145,7 +180,131 @@ class AppRepository @Inject constructor(
         Log.d("AppRepository", "Anggaran listener stopped.")
     }
 
-    suspend fun insertWallet(wallet: Wallet) { /* ... sama ... */ }
+    suspend fun createDefaultWalletsIfNotExist(userId: String) {
+        val defaultWalletNames = listOf("Tunai", "Tabungan", "Non-Tunai")
+        val walletsCollection = db.collection("users").document(userId).collection("wallets")
+
+        val existingWalletsSnapshot = walletsCollection.get().await()
+        if (existingWalletsSnapshot.isEmpty) {
+            defaultWalletNames.forEach { name ->
+                val wallet = Wallet(userId = userId, name = name, balance = 0L)
+                try {
+                    walletsCollection.add(wallet).await()
+                    Log.d("AppRepository", "Default wallet '$name' created for user $userId")
+                } catch (e: Exception) {
+                    Log.e("AppRepository", "Error creating default wallet '$name': $e")
+                }
+            }
+        } else {
+            Log.d("AppRepository", "User $userId already has wallets, skipping default creation or checking for missing ones.")
+            val existingWalletNames = existingWalletsSnapshot.documents.mapNotNull { it.getString("name") }
+            defaultWalletNames.forEach { name ->
+                if (!existingWalletNames.contains(name)) {
+                    val wallet = Wallet(userId = userId, name = name, balance = 0L)
+                    try {
+                        walletsCollection.add(wallet).await()
+                        Log.d("AppRepository", "Added missing default wallet '$name' for user $userId")
+                    } catch (e: Exception) {
+                        Log.e("AppRepository", "Error adding missing default wallet '$name': $e")
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun addWallet(name: String, userId: String): Result<Unit> {
+        return try {
+            val walletsCollection = db.collection("users").document(userId).collection("wallets")
+            val existingWallet = walletsCollection.whereEqualTo("name", name).limit(1).get().await()
+
+            if (existingWallet.isEmpty) {
+                val newWallet = Wallet(userId = userId, name = name, balance = 0L)
+                walletsCollection.add(newWallet).await()
+                Log.d("AppRepository", "Wallet '$name' added for user $userId")
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Dompet dengan nama '$name' sudah ada."))
+            }
+        } catch (e: Exception) {
+            Log.e("AppRepository", "Error adding wallet: $e")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateWalletName(walletId: String, newName: String, userId: String): Result<Unit> {
+        return try {
+            val walletsCollection = db.collection("users").document(userId).collection("wallets")
+            val walletDocRef = walletsCollection.document(walletId)
+
+            val otherWalletsWithNewName = walletsCollection.whereEqualTo("name", newName).get().await()
+            if (otherWalletsWithNewName.documents.any { it.id != walletId }) {
+                return Result.failure(Exception("Nama dompet '$newName' sudah digunakan oleh dompet lain."))
+            }
+
+            walletDocRef.update("name", newName).await()
+            Log.d("AppRepository", "Wallet ID '$walletId' renamed to '$newName'")
+
+            val batch = db.batch()
+            val transactionsToUpdate = db.collection("transactions")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("walletId", walletId)
+                .get().await()
+
+            transactionsToUpdate.documents.forEach { doc ->
+                Log.d("AppRepository", "Updating transaction ${doc.id} type to new wallet name $newName")
+                batch.update(doc.reference, "type", newName)
+            }
+            batch.commit().await()
+            Log.d("AppRepository", "Updated 'type' field for ${transactionsToUpdate.size()} transactions linked to wallet $walletId")
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AppRepository", "Error updating wallet name: $e", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun hasTransactionsForWallet(walletId: String, userId: String): Boolean {
+        return try {
+            val querySnapshot = db.collection("transactions")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("walletId", walletId)
+                .limit(1)
+                .get()
+                .await()
+            !querySnapshot.isEmpty
+        } catch (e: Exception) {
+            Log.e("AppRepository", "Error checking transactions for wallet $walletId: $e")
+            true
+        }
+    }
+
+    suspend fun deleteWallet(walletId: String, userId: String): Result<Unit> {
+        return try {
+            val walletDocRef = db.collection("users").document(userId).collection("wallets").document(walletId)
+            val walletDoc = walletDocRef.get().await()
+            if (!walletDoc.exists()) {
+                return Result.failure(Exception("Dompet tidak ditemukan."))
+            }
+            val walletName = walletDoc.getString("name")
+
+            val defaultWallets = listOf("Tunai", "Tabungan", "Non-Tunai")
+            if (defaultWallets.any { it.equals(walletName, ignoreCase = true) }) {
+                return Result.failure(Exception("Dompet default ('$walletName') tidak bisa dihapus."))
+            }
+
+            if (hasTransactionsForWallet(walletId, userId)) {
+                return Result.failure(Exception("Dompet '$walletName' tidak bisa dihapus karena masih memiliki transaksi terkait."))
+            }
+
+            walletDocRef.delete().await()
+            Log.d("AppRepository", "Wallet ID '$walletId' ('$walletName') deleted for user $userId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AppRepository", "Error deleting wallet $walletId: $e")
+            Result.failure(e)
+        }
+    }
 
     suspend fun insertAnggaran(localAnggaran: LocalAnggaran): String? {
         val userId = auth.currentUser?.uid ?: return null
@@ -220,10 +379,12 @@ class AppRepository @Inject constructor(
     suspend fun onUserLogin() {
         val user = auth.currentUser
         if (user == null) {
-            Log.w("AppRepository", "onUserLogin: User is null. Cannot sync.")
+            Log.w("AppRepository", "onUserLogin: User is null.")
             return
         }
-        Log.d("AppRepository", "onUserLogin: Called for user: ${user.uid}")
+        Log.d("AppRepository", "onUserLogin: Called for user ${user.uid}")
+
+        createDefaultWalletsIfNotExist(user.uid)
 
         try {
             val firestoreTransactionsSnapshot = db.collection("transactions")
@@ -259,11 +420,9 @@ class AppRepository @Inject constructor(
                     Log.w("AppRepository", "onUserLogin: Firestore TX has blank Firestore ID, skipping: $txFromFirestore")
                     continue
                 }
-                // Dapatkan LocalTransaction langsung ke val (immutable)
                 val existingLocal = localTransactionDao.getByFirestoreId(txFromFirestore.id)
 
                 if (existingLocal != null) {
-                    // existingLocal sekarang adalah val, smart cast aman
                     val needsUpdate = existingLocal.isSynced != true ||
                             existingLocal.imageUrl != txFromFirestore.imageUrl ||
                             existingLocal.type != txFromFirestore.type ||
@@ -296,14 +455,11 @@ class AppRepository @Inject constructor(
                         Log.d("AppRepository", "onUserLogin: Existing Room TX (LocalID ${existingLocal.id}) for Firestore ID ${txFromFirestore.id} is already up-to-date.")
                     }
                 } else {
-                    // Dapatkan LocalTransaction langsung ke val (immutable)
                     val localTxByClientUuid = if (txFromFirestore.clientGeneratedId.isNotBlank()) {
                         localTransactionDao.getByClientGeneratedId(txFromFirestore.clientGeneratedId)
                     } else null
 
-
                     if (localTxByClientUuid != null) {
-                        // localTxByClientUuid sekarang adalah val, smart cast aman
                         Log.i("AppRepository", "onUserLogin: Found local TX by ClientUUID ${txFromFirestore.clientGeneratedId} (LocalID ${localTxByClientUuid.id}). Linking with FirestoreID ${txFromFirestore.id}.")
                         localTransactionDao.update(
                             localTxByClientUuid.copy(
@@ -343,12 +499,10 @@ class AppRepository @Inject constructor(
                 }
             }
             Log.i("AppRepository", "onUserLogin: Sync TX to Room complete. New inserts: $newInsertsToRoom, Updated in Room: $updatedInRoom, Already matched: $alreadyInRoomAndMatched")
-
         } catch (e: Exception) {
             Log.e("AppRepository", "onUserLogin: Error syncing Firestore TX to Room: $e", e)
         }
 
-        // Sinkronisasi Anggaran (Tambahkan ini)
         try {
             val firestoreAnggaranSnapshot = db.collection("anggarans")
                 .whereEqualTo("userId", user.uid)
@@ -365,10 +519,8 @@ class AppRepository @Inject constructor(
             var alreadyInRoomAndMatchedAnggaran = 0
 
             firestoreAnggaranList.forEach { firestoreAnggaran ->
-                // Dapatkan LocalAnggaran langsung ke val (immutable)
                 val existingLocalAnggaran = anggaranDao.getAnggaranByFirestoreId(firestoreAnggaran.id)
                 if (existingLocalAnggaran != null) {
-                    // existingLocalAnggaran sekarang adalah val, smart cast aman
                     val localNeedsUpdate = existingLocalAnggaran.isSynced != true ||
                             existingLocalAnggaran.name != firestoreAnggaran.name ||
                             existingLocalAnggaran.category != firestoreAnggaran.category ||
@@ -377,9 +529,9 @@ class AppRepository @Inject constructor(
                             (existingLocalAnggaran.endDate != firestoreAnggaran.endDate && firestoreAnggaran.endDate != null) ||
                             existingLocalAnggaran.clientGeneratedId != firestoreAnggaran.clientGeneratedId
 
-                    if(localNeedsUpdate) {
+                    if (localNeedsUpdate) {
                         anggaranDao.update(
-                            existingLocalAnggaran.copy( // Gunakan salinan val
+                            existingLocalAnggaran.copy(
                                 name = firestoreAnggaran.name,
                                 category = firestoreAnggaran.category,
                                 amount = firestoreAnggaran.amount,
@@ -394,15 +546,13 @@ class AppRepository @Inject constructor(
                         alreadyInRoomAndMatchedAnggaran++
                     }
                 } else {
-                    // Dapatkan LocalAnggaran langsung ke val (immutable)
                     val localAnggaranByClientUuid = if (firestoreAnggaran.clientGeneratedId.isNotBlank()) {
                         anggaranDao.getAnggaranByClientGeneratedId(firestoreAnggaran.clientGeneratedId)
                     } else null
 
                     if (localAnggaranByClientUuid != null) {
-                        // localAnggaranByClientUuid sekarang adalah val, smart cast aman
                         anggaranDao.update(
-                            localAnggaranByClientUuid.copy( // Gunakan salinan val
+                            localAnggaranByClientUuid.copy(
                                 firestoreId = firestoreAnggaran.id,
                                 isSynced = true,
                                 name = firestoreAnggaran.name,
