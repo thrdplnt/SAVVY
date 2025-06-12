@@ -101,14 +101,21 @@ fun HomeScreen(
             )
         }
 
-        // Search Bar
+        // Search Bar (diperbaiki agar lebih kecil dan konsisten)
         OutlinedTextField(
             value = uiState.searchQuery,
             onValueChange = { viewModel.onSearchQueryChanged(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            placeholder = { Text("Cari kategori, catatan, atau tanggal", style = MaterialTheme.typography.bodyMedium) },
+                .padding(bottom = 16.dp)
+                .height(54.dp), // PERBAIKAN: Tinggi search bar diatur eksplisit menjadi 48.dp
+            placeholder = {
+                Text(
+                    "Cari transaksi...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+            },
             leadingIcon = { Icon(Icons.Default.Search, "Search Icon", tint = Navy) },
             trailingIcon = {
                 if (uiState.searchQuery.isNotEmpty()) {
@@ -120,14 +127,17 @@ fun HomeScreen(
             shape = RoundedCornerShape(24.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Navy,
-                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
+                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f),
+                unfocusedContainerColor = White,
+                focusedContainerColor = White,
             ),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Navy), // Menggunakan font dari theme
             keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = {
                 viewModel.performSearch()
                 keyboardController?.hide()
             }),
-            singleLine = true
+            singleLine = true,
         )
 
         // Tampilan kondisional
@@ -156,26 +166,33 @@ fun HomeScreen(
         }
     }
 
-    // Dialog untuk menampilkan semua dompet
+    // PERUBAHAN: Urutan prioritas dompet diubah sesuai permintaan
+    val priorityOrder = listOf("Tunai", "Non-Tunai", "Tabungan")
+    val sortedWallets = uiState.walletsWithBalance.sortedWith(
+        compareBy { walletItem ->
+            val index = priorityOrder.indexOf(walletItem.wallet.name)
+            if (index == -1) Int.MAX_VALUE else index // Dompet lain akan diletakkan di akhir
+        }
+    )
+
+    // Dialog untuk menampilkan semua dompet (dengan urutan yang sudah diperbaiki)
     if (showDompetDialog) {
         AlertDialog(
             onDismissRequest = { showDompetDialog = false },
-            title = { Text("Semua Dompet", color = Navy, fontWeight = FontWeight.Bold) },
+            title = { Text("Semua Dompet", style = MaterialTheme.typography.titleLarge.copy(color = Navy)) },
             text = {
                 LazyColumn {
-                    items(uiState.walletsWithBalance) { walletItem ->
+                    items(sortedWallets) { walletItem -> // Menggunakan list yang sudah diurutkan
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(walletItem.wallet.name, color = Navy, fontSize = 16.sp)
+                            Text(walletItem.wallet.name, style = MaterialTheme.typography.bodyLarge.copy(color = Navy))
                             Text(
                                 text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(walletItem.balance)}" else "****",
-                                color = Navy,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 16.sp
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, color = Navy)
                             )
                         }
                     }
@@ -183,7 +200,7 @@ fun HomeScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showDompetDialog = false }) {
-                    Text("Tutup", color = Navy)
+                    Text("Tutup", color = Navy, style = MaterialTheme.typography.labelLarge)
                 }
             },
             containerColor = White
@@ -203,6 +220,15 @@ fun DashboardContent(
     onCategorySelected: (String?, Float?) -> Unit,
     navController: NavController
 ) {
+    // PERUBAHAN: Urutan prioritas dompet diubah sesuai permintaan
+    val priorityOrder = listOf("Tunai", "Non-Tunai", "Tabungan")
+    val sortedWallets = uiState.walletsWithBalance.sortedWith(
+        compareBy { walletItem ->
+            val index = priorityOrder.indexOf(walletItem.wallet.name)
+            if (index == -1) Int.MAX_VALUE else index
+        }
+    )
+
     Column {
         if (uiState.isLoading) {
             Box(
@@ -221,10 +247,10 @@ fun DashboardContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start
             ) {
+                // PERBAIKAN: Menggunakan font dari theme
                 Text(
                     text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(uiState.totalSaldo)}" else "****",
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineLarge,
                     color = Navy
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -237,9 +263,10 @@ fun DashboardContent(
                         .size(24.dp)
                 )
             }
+            // PERBAIKAN: Menggunakan font dari theme
             Text(
                 text = "Total saldo",
-                fontSize = 16.sp,
+                style = MaterialTheme.typography.bodyLarge,
                 color = Color.Gray,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -268,16 +295,19 @@ fun DashboardContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        // PERBAIKAN: Menggunakan font dari theme
                         Text(
                             text = "Dompetku",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = Navy
                         )
-                        if (uiState.walletsWithBalance.size > 2) {
+                        // Tombol "Lihat selengkapnya" hanya muncul jika ada lebih dari 2 dompet
+                        if (sortedWallets.size > 2) {
                             Text(
                                 text = "Lihat selengkapnya",
-                                fontSize = 14.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Navy,
                                 modifier = Modifier
                                     .clickable(onClick = onLihatSemuaDompetClick)
@@ -291,7 +321,7 @@ fun DashboardContent(
                         thickness = 1.dp,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    if (uiState.walletsWithBalance.isEmpty()) {
+                    if (sortedWallets.isEmpty()) {
                         Text(
                             text = "Belum ada dompet",
                             style = MaterialTheme.typography.bodyMedium,
@@ -299,24 +329,24 @@ fun DashboardContent(
                             modifier = Modifier.padding(vertical = 8.dp)
                         )
                     } else {
-                        // Tampilkan semua dompet di card, bukan hanya 2
-                        uiState.walletsWithBalance.forEach { walletItem ->
+                        // PERBAIKAN: Hanya menampilkan 2 dompet teratas sebagai preview
+                        sortedWallets.take(2).forEach { walletItem ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                // PERBAIKAN: Menggunakan font dari theme
                                 Text(
                                     text = walletItem.wallet.name,
-                                    fontSize = 16.sp,
+                                    style = MaterialTheme.typography.bodyLarge,
                                     color = Navy
                                 )
                                 Text(
                                     text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(walletItem.balance)}" else "****",
-                                    fontSize = 16.sp,
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                                     color = Navy,
-                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
@@ -409,22 +439,21 @@ fun DashboardContent(
                         ) {
                             if (selectedCategory != null && selectedPercentage != null) {
                                 Text(
-                                    text = selectedCategory!!,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = selectedCategory,
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                                     color = Navy,
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
                                     text = "${String.format("%.1f", selectedPercentage)}%",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = Navy,
                                     textAlign = TextAlign.Center
                                 )
                             } else {
                                 Text(
                                     text = "Ketuk untuk\nmelihat detail",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color.Gray,
                                     textAlign = TextAlign.Center,
                                     lineHeight = 16.sp
@@ -436,32 +465,47 @@ fun DashboardContent(
             }
 
             // Card Analisis
-            if (uiState.monthlyCategoryExpenses.isNotEmpty()) {
-                Card(
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                        .padding(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Analisis Pengeluaran Bulan Ini",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Navy,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Divider(
-                            color = Navy.copy(alpha = 0.3f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                    Text(
+                        text = "Analisis Transaksi",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Navy,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Divider(
+                        color = Navy.copy(alpha = 0.3f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    // PERBAIKAN: Menambahkan kondisi jika tidak ada pengeluaran
+                    if (uiState.monthlyCategoryExpenses.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Belum ada pengeluaran bulan ini.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
+                        }
+                    } else {
                         uiState.monthlyCategoryExpenses.entries.sortedByDescending { it.value }.forEach { (category, totalAmount) ->
                             AnalysisItem(
                                 category = category,
