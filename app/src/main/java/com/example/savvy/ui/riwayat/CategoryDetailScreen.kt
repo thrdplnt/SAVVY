@@ -101,11 +101,11 @@ fun CategoryDetailScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    // PERBAIKAN: Menggunakan font dari theme
                     Text(
                         text = "Transaksi $category",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Navy
+                        color = Navy,
+                        modifier = Modifier.offset(x =4.dp)
                     )
                 },
                 navigationIcon = {
