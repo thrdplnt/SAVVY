@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -27,15 +28,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.savvy.R
-import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.data.Screen
-import com.example.savvy.ui.theme.*
+import com.example.savvy.ui.components.SavvyButton
+import com.example.savvy.ui.theme.Beige
+import com.example.savvy.ui.theme.Navy
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     navController: NavController,
@@ -44,45 +45,46 @@ fun LoginScreen(
     val authState by viewModel.authState.collectAsState()
     val context = LocalContext.current
 
-    // Deklarasi email, password, dan state untuk visibilitas password
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var isPasswordVisible by remember { mutableStateOf(false) } // State untuk visibilitas password
+    var isPasswordVisible by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Beige)
-    ) {
-        // Tombol panah kembali (kiri atas)
-        IconButton(
-            onClick = {
-                navController.popBackStack()
-            },
-            modifier = Modifier
-                .absoluteOffset(x = 16.dp, y = 42.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Back",
-                tint = Navy
+    // PERBAIKAN: Menggunakan Scaffold untuk struktur layout yang lebih baik
+    Scaffold(
+        containerColor = Beige, // Warna background utama
+        topBar = {
+            // PERBAIKAN: TopAppBar dibuat transparan agar menyatu dengan background
+            TopAppBar(
+                title = { /* Kosongkan agar tidak ada judul default */ },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Navy
+                        )
+                    }
+                },
+                actions = {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo_savvy_small),
+                        contentDescription = "Savvy Logo",
+                        modifier = Modifier
+                            .padding(end = 16.dp)
+                            .size(120.dp, 40.dp)
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent // Membuat TopAppBar transparan
+                )
             )
         }
-
-        // Logo Savvy (kanan atas)
-        Image(
-            painter = painterResource(id = R.drawable.logo_savvy_small),
-            contentDescription = "Savvy Logo",
-            modifier = Modifier
-                .absoluteOffset(x = (-42).dp, y = 42.dp)
-                .size(120.dp, 40.dp)
-                .align(Alignment.TopEnd)
-        )
-
-        // Konten utama (judul, field, tombol, teks)
+    ) { paddingValues ->
+        // Konten utama
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(paddingValues)
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -90,8 +92,8 @@ fun LoginScreen(
             // Judul "SIGN IN"
             Text(
                 text = "SIGN IN",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+                // PERBAIKAN: Menggunakan font dari theme
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = Navy,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -101,12 +103,13 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Kontainer untuk field, tombol, dan teks
+            // Kontainer untuk form
             Column(
                 modifier = Modifier
                     .widthIn(max = 500.dp)
                     .fillMaxWidth(0.89f)
-                    .background(White, shape = RoundedCornerShape(8.dp))
+                    // PERBAIKAN: Menggunakan warna dari theme
+                    .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(12.dp))
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -115,27 +118,26 @@ fun LoginScreen(
                     value = email,
                     onValueChange = { email = it },
                     label = { Text("Email") },
-                    modifier = Modifier
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     shape = RoundedCornerShape(12.dp),
+                    // PERBAIKAN: Menggunakan warna dari theme
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                         focusedBorderColor = Navy,
-                        unfocusedBorderColor = Navy,
-                        focusedContainerColor = White,
-                        unfocusedContainerColor = White
+                        unfocusedBorderColor = Navy.copy(alpha = 0.7f)
                     )
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Password Field dengan ikon mata
+                // Password Field
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password") },
-                    modifier = Modifier
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     shape = RoundedCornerShape(12.dp),
@@ -148,28 +150,27 @@ fun LoginScreen(
                             )
                         }
                     },
+                    // PERBAIKAN: Menggunakan warna dari theme
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                         focusedBorderColor = Navy,
-                        unfocusedBorderColor = Navy,
-                        focusedContainerColor = White,
-                        unfocusedContainerColor = White
+                        unfocusedBorderColor = Navy.copy(alpha = 0.7f)
                     )
                 )
 
-                // Error Message (diletakkan langsung di bawah Password Field)
                 authState.errorMessage?.let {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = it,
                         color = MaterialTheme.colorScheme.error,
-                        fontSize = 11.sp,
-                        modifier = Modifier
-                            .fillMaxWidth(),
+                        // PERBAIKAN: Menggunakan font dari theme
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
                     )
                 }
 
-                // Loading Indicator
                 if (authState.isLoading) {
                     CircularProgressIndicator(
                         color = Navy,
@@ -180,15 +181,10 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                // Login Button (Menggunakan SavvyButton)
                 SavvyButton(
                     text = "Log In",
-                    onClick = {
-                        viewModel.login(email, password)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
+                    onClick = { viewModel.login(email, password) },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
                     enabled = !authState.isLoading,
                     textColor = Navy,
                     backgroundColor = Beige
@@ -196,74 +192,52 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Teks "Don't have an account? Sign in"
+                // Teks "Don't have an account? Sign up"
                 ClickableText(
                     text = buildAnnotatedString {
-                        withStyle(style = SpanStyle(color = Navy)) {
-                            append("Don't have an account? ")
-                        }
-                        withStyle(
-                            style = SpanStyle(
-                                color = Navy,
-                                textDecoration = TextDecoration.Underline
-                            )
-                        ) {
-                            append("Sign in")
-                        }
+                        withStyle(style = SpanStyle(color = Navy)) { append("Don't have an account? ") }
+                        withStyle(style = SpanStyle(color = Navy, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold)) { append("Sign up") }
                     },
-                    onClick = { offset: Int ->
-                        val signInText = "Sign in"
-                        val signInStartIndex = "Don't have an account? ".length
-                        val signInEndIndex = signInStartIndex + signInText.length
-                        if (offset in signInStartIndex until signInEndIndex) {
+                    onClick = { offset ->
+                        val text = "Sign up"
+                        val startIndex = "Don't have an account? ".length
+                        if (offset in startIndex..(startIndex + text.length)) {
                             navController.navigate(Screen.Register.route)
                         }
                     },
-                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                    style = LocalTextStyle.current.copy(
-                        fontSize = 11.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    modifier = Modifier.padding(2.dp),
+                    // PERBAIKAN: Menggunakan font dari theme
+                    style = MaterialTheme.typography.labelMedium.copy(textAlign = TextAlign.Center)
                 )
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Teks "Lupa Password?" (di dalam kontainer)
+                // Teks "Lupa Password?"
                 ClickableText(
                     text = buildAnnotatedString {
-                        withStyle(
-                            style = SpanStyle(
-                                color = Navy,
-                                textDecoration = TextDecoration.Underline
-                            )
-                        ) {
-                            append("Lupa Password?")
-                        }
+                        withStyle(style = SpanStyle(color = Navy, textDecoration = TextDecoration.Underline)) { append("Lupa Password?") }
                     },
-                    onClick = { _: Int ->
+                    onClick = {
                         if (email.isNotEmpty()) {
                             viewModel.resetPassword(email)
                         } else {
                             Toast.makeText(context, "Masukkan email terlebih dahulu", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                    style = LocalTextStyle.current.copy(
-                        fontSize = 11.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    modifier = Modifier.padding(2.dp),
+                    // PERBAIKAN: Menggunakan font dari theme
+                    style = MaterialTheme.typography.labelMedium.copy(textAlign = TextAlign.Center)
                 )
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
 
-            // Handle navigation when success
-            LaunchedEffect(authState.isSuccess) {
-                if (authState.isSuccess) {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
-                    }
-                }
+    LaunchedEffect(authState.isSuccess) {
+        if (authState.isSuccess) {
+            navController.navigate(Screen.Home.route) {
+                popUpTo(Screen.Login.route) { inclusive = true }
             }
         }
     }
