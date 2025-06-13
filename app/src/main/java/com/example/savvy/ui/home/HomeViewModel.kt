@@ -130,6 +130,8 @@ class HomeViewModel @Inject constructor(
                 }?.lowercase() ?: ""
                 category.contains(query) || note.contains(query) || type.contains(query) || dateString.contains(query)
             }
+                .sortedByDescending { it.date } // <-- PERBAIKAN: Tambahkan baris ini untuk mengurutkan
+
             _uiState.update { it.copy(isSearching = true, searchResults = results) }
         }
     }
