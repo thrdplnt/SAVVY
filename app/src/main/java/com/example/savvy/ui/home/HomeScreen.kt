@@ -355,110 +355,145 @@ fun DashboardContent(
             }
 
             // Pie Chart
-            if (uiState.totalPengeluaranBulanIni > 0) {
-                Card(
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                        .padding(16.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(
+                    // Judul untuk kartu grafik
+                    Text(
+                        text = "Grafik Pengeluaran Bulan Ini",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Navy,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Divider(
+                        color = Navy.copy(alpha = 0.3f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    // PERBAIKAN: Logika untuk menampilkan grafik atau pesan kosong
+                    if (uiState.monthlyCategoryExpenses.isNotEmpty()) {
+                        Box(
                             modifier = Modifier
-                                .size(150.dp)
-                                .pointerInput(Unit) {
-                                    awaitPointerEventScope {
-                                        while (true) {
-                                            val event = awaitPointerEvent()
-                                            if (event.type == PointerEventType.Press) {
-                                                val offset = event.changes.first().position
-                                                val centerX = size.width / 2f
-                                                val centerY = size.height / 2f
-                                                val dx = offset.x - centerX
-                                                val dy = offset.y - centerY
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(
+                                modifier = Modifier
+                                    .size(150.dp)
+                                    .pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                if (event.type == PointerEventType.Press) {
+                                                    val offset = event.changes.first().position
+                                                    val centerX = size.width / 2f
+                                                    val centerY = size.height / 2f
+                                                    val dx = offset.x - centerX
+                                                    val dy = offset.y - centerY
 
-                                                val distance = sqrt(dx * dx + dy * dy)
-                                                val radius = size.width / 2f
-                                                val innerRadius = radius - 40f
+                                                    val distance = sqrt(dx * dx + dy * dy)
+                                                    val radius = size.width / 2f
+                                                    val innerRadius = radius - 40f
 
-                                                if (distance in innerRadius..radius) {
-                                                    var angle = atan2(dy, dx) * 180 / Math.PI
-                                                    if (angle < 0) angle += 360
+                                                    if (distance in innerRadius..radius) {
+                                                        var angle = atan2(dy, dx) * 180 / Math.PI
+                                                        if (angle < 0) angle += 360
 
-                                                    var startAngle = 0f
-                                                    var selected: String? = null
-                                                    var percentage: Float? = null
+                                                        var startAngle = 0f
+                                                        var selected: String? = null
+                                                        var percentage: Float? = null
 
-                                                    uiState.monthlyCategoryExpenses.forEach { (category, amount) ->
-                                                        val sweepAngle = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 360f
-                                                        if (angle >= startAngle && angle < startAngle + sweepAngle) {
-                                                            selected = category
-                                                            percentage = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 100f
+                                                        uiState.monthlyCategoryExpenses.forEach { (category, amount) ->
+                                                            val sweepAngle = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 360f
+                                                            if (angle >= startAngle && angle < startAngle + sweepAngle) {
+                                                                selected = category
+                                                                percentage = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 100f
+                                                            }
+                                                            startAngle += sweepAngle
                                                         }
-                                                        startAngle += sweepAngle
-                                                    }
 
-                                                    onCategorySelected(selected, percentage)
-                                                } else {
-                                                    onCategorySelected(null, null)
+                                                        onCategorySelected(selected, percentage)
+                                                    } else {
+                                                        onCategorySelected(null, null)
+                                                    }
+                                                    event.changes.forEach { it.consume() }
                                                 }
-                                                event.changes.forEach { it.consume() }
                                             }
                                         }
                                     }
+                            ) {
+                                var startAngle = 0f
+                                uiState.monthlyCategoryExpenses.forEach { (category, amount) ->
+                                    val sweepAngle = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 360f
+                                    val isSelected = category == selectedCategory
+                                    drawArc(
+                                        color = categoryColors[category] ?: Color.Gray,
+                                        startAngle = startAngle,
+                                        sweepAngle = sweepAngle,
+                                        useCenter = false,
+                                        topLeft = Offset(0f, 0f),
+                                        size = Size(size.width, size.height),
+                                        style = Stroke(width = if (isSelected) 100f else 80f)
+                                    )
+                                    startAngle += sweepAngle
                                 }
-                        ) {
-                            var startAngle = 0f
-                            uiState.monthlyCategoryExpenses.forEach { (category, amount) ->
-                                val sweepAngle = (amount.toFloat() / uiState.totalPengeluaranBulanIni.toFloat()) * 360f
-                                val isSelected = category == selectedCategory
-                                drawArc(
-                                    color = categoryColors[category] ?: Color.Gray,
-                                    startAngle = startAngle,
-                                    sweepAngle = sweepAngle,
-                                    useCenter = false,
-                                    topLeft = Offset(0f, 0f),
-                                    size = Size(size.width, size.height),
-                                    style = Stroke(width = if (isSelected) 100f else 80f)
-                                )
-                                startAngle += sweepAngle
+                            }
+
+                            Column(
+                                modifier = Modifier.width(100.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (selectedCategory != null && selectedPercentage != null) {
+                                    Text(
+                                        text = selectedCategory,
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                        color = Navy,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Text(
+                                        text = "${String.format("%.1f", selectedPercentage)}%",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Navy,
+                                        textAlign = TextAlign.Center
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Ketuk untuk\nmelihat detail",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 16.sp
+                                    )
+                                }
                             }
                         }
-
-                        Column(
-                            modifier = Modifier.width(100.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                    } else {
+                        // Tampilkan pesan ini jika tidak ada pengeluaran
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            if (selectedCategory != null && selectedPercentage != null) {
-                                Text(
-                                    text = selectedCategory,
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = Navy,
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = "${String.format("%.1f", selectedPercentage)}%",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Navy,
-                                    textAlign = TextAlign.Center
-                                )
-                            } else {
-                                Text(
-                                    text = "Ketuk untuk\nmelihat detail",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Gray,
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 16.sp
-                                )
-                            }
+                            Text(
+                                text = "Belum ada pengeluaran bulan ini.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
                         }
                     }
                 }
@@ -478,8 +513,9 @@ fun DashboardContent(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
+                    // Judul untuk kartu analisis
                     Text(
-                        text = "Analisis Transaksi",
+                        text = "Analisis Pengeluaran Bulan Ini",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold
                         ),
@@ -491,7 +527,6 @@ fun DashboardContent(
                         thickness = 1.dp,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    // PERBAIKAN: Menambahkan kondisi jika tidak ada pengeluaran
                     if (uiState.monthlyCategoryExpenses.isEmpty()) {
                         Box(
                             modifier = Modifier
