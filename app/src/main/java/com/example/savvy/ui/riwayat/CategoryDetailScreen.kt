@@ -16,10 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.savvy.ui.theme.Navy
+import com.example.savvy.ui.theme.White
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -100,11 +101,10 @@ fun CategoryDetailScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    // Removed the month display from the title
+                    // PERBAIKAN: Menggunakan font dari theme
                     Text(
                         text = "Transaksi $category",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = Navy
                     )
                 },
@@ -114,11 +114,11 @@ fun CategoryDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.White
+                    containerColor = White // Menggunakan warna dari theme
                 )
             )
         },
-        containerColor = Color.White
+        containerColor = White // Menggunakan warna dari theme
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -128,60 +128,66 @@ fun CategoryDetailScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (isLoading) {
-                CircularProgressIndicator(
-                    color = Navy,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .align(Alignment.CenterHorizontally)
-                )
+                // PERBAIKAN: Box agar CircularProgressIndicator benar-benar di tengah layar
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Navy)
+                }
             } else if (transactions.isEmpty()) {
-                // Keep the month in the "empty" message for clarity to the user
+                // PERBAIKAN: Menggunakan font dari theme dan memperbaiki format tanggal
+                val monthYearFormat = SimpleDateFormat("MMMM yyyy", Locale("id"))
                 Text(
-                    text = "Tidak ada transaksi untuk kategori ini di bulan ${SimpleDateFormat("MMMM Букмекерлар", Locale("id")).format(currentMonth.time)}.",
-                    fontSize = 16.sp,
+                    text = "Tidak ada transaksi untuk kategori ini di bulan ${monthYearFormat.format(currentMonth.time)}.",
+                    style = MaterialTheme.typography.bodyLarge,
                     color = Color.Gray,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             } else {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp) // Sedikit menambah jarak antar item
                 ) {
                     items(transactions) { transaction ->
                         val amount = transaction["amount"] as? Long ?: 0L
+                        // PERBAIKAN: Memperbaiki format tanggal
+                        val dateFormat = SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("id"))
                         val date = (transaction["date"] as? com.google.firebase.Timestamp)?.toDate()?.let {
-                            java.text.SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("id")).format(it)
+                            dateFormat.format(it)
                         } ?: "Tanggal Tidak Diketahui"
                         val note = transaction["note"] as? String ?: "Tidak ada catatan"
 
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp), // Menyamakan corner radius dengan HomeScreen
                             colors = CardDefaults.cardColors(
                                 containerColor = Color(0xFFE6F0FA)
                             ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
                             Column(
-                                modifier = Modifier.padding(16.dp)
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp) // Memberi jarak antar teks
                             ) {
+                                // PERBAIKAN: Menggunakan font dari theme
                                 Text(
-                                    text = "Rp ${NumberFormat.getNumberInstance(Locale("id", "ID")).format(amount)}",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                                     color = Navy
                                 )
+                                // PERBAIKAN: Menggunakan font dari theme
                                 Text(
                                     text = "Tanggal: $date",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = Color.Gray
                                 )
+                                // PERBAIKAN: Menggunakan font dari theme
                                 Text(
                                     text = "Catatan: $note",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = Color.Gray
                                 )
                             }

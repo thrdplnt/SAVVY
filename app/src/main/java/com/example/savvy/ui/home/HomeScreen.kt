@@ -370,7 +370,7 @@ fun DashboardContent(
                 ) {
                     // Judul untuk kartu grafik
                     Text(
-                        text = "Grafik Pengeluaran Bulan Ini",
+                        text = "Pengeluaran bulan ini",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold
                         ),
@@ -515,7 +515,7 @@ fun DashboardContent(
                 ) {
                     // Judul untuk kartu analisis
                     Text(
-                        text = "Analisis Pengeluaran Bulan Ini",
+                        text = "Analisis",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold
                         ),
