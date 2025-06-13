@@ -1,5 +1,6 @@
 package com.example.savvy.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -8,7 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
+import com.example.savvy.ui.theme.Navy
+import com.example.savvy.ui.theme.White
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,29 +32,39 @@ fun SavvyDropdownMenu(
         OutlinedTextField(
             value = selectedItem,
             onValueChange = {},
-            label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
+            label = { Text(label, style = MaterialTheme.typography.bodyLarge.copy(color = Navy.copy(alpha = 0.7f))) },
             readOnly = true,
             enabled = enabled,
             trailingIcon = {
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,
                     contentDescription = "Dropdown",
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 1f else 0.5f) // Atur opacity pada tint
+                    // PERBAIKAN: Menggunakan warna Navy agar konsisten
+                    tint = Navy.copy(alpha = if (enabled) 1f else 0.5f)
                 )
             },
             modifier = Modifier
                 .fillMaxWidth()
                 .menuAnchor(),
             shape = RoundedCornerShape(12.dp),
+            // PERBAIKAN: Menggunakan font dari theme agar konsisten
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = Navy),
+            // PERBAIKAN: Mengganti seluruh blok warna agar sama dengan SavvyTextField
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.primary,
-                disabledBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                focusedBorderColor = Navy,
+                unfocusedBorderColor = Navy.copy(alpha = 0.7f),
+                disabledBorderColor = Navy.copy(alpha = 0.3f),
+                cursorColor = Navy,
+                focusedTextColor = Navy,
+                unfocusedTextColor = Navy,
+                disabledTextColor = Navy.copy(alpha = 0.7f),
+                focusedLabelColor = Navy,
+                unfocusedLabelColor = Navy.copy(alpha = 0.7f),
+                disabledLabelColor = Navy.copy(alpha = 0.3f),
+                // Ini bagian terpenting: background di-set menjadi putih
+                focusedContainerColor = White,
+                unfocusedContainerColor = White,
+                disabledContainerColor = White.copy(alpha = 0.5f)
             )
         )
 

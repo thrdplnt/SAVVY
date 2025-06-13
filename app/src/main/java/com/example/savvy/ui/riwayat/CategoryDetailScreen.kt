@@ -74,8 +74,6 @@ fun CategoryDetailScreen(
         calendarEnd.set(Calendar.MILLISECOND, 999)
         val endDate = calendarEnd.time
 
-        Log.d("CategoryDetailScreen", "Fetching transactions for userId: $currentUserId, category: $category, from: $startDate to: $endDate")
-
         db.collection("transactions")
             .whereEqualTo("userId", currentUserId)
             .whereEqualTo("category", category)
@@ -84,7 +82,6 @@ fun CategoryDetailScreen(
             .orderBy("date", Query.Direction.DESCENDING)
             .get()
             .addOnSuccessListener { querySnapshot ->
-                Log.d("CategoryDetailScreen", "Found ${querySnapshot.documents.size} transactions for this month.")
                 for (document in querySnapshot.documents) {
                     transactions.add(document.data ?: emptyMap())
                 }
@@ -97,100 +94,97 @@ fun CategoryDetailScreen(
             }
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "Transaksi $category",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Navy,
-                        modifier = Modifier.offset(x =4.dp)
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Kembali", tint = Navy)
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = White // Menggunakan warna dari theme
-                )
-            )
-        },
-        containerColor = White // Menggunakan warna dari theme
-    ) { paddingValues ->
-        Column(
+    // PERBAIKAN: Menghapus Scaffold dan menggunakan Column sebagai root layout
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(White)
+    ) {
+        // PERBAIKAN: Header statis tanpa TopAppBar
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp) // Padding untuk IconButton
+                .padding(top = 24.dp, bottom = 16.dp), // 'Gap' yang konsisten
+            contentAlignment = Alignment.Center
         ) {
-            if (isLoading) {
-                // PERBAIKAN: Box agar CircularProgressIndicator benar-benar di tengah layar
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Navy)
-                }
-            } else if (transactions.isEmpty()) {
-                // PERBAIKAN: Menggunakan font dari theme dan memperbaiki format tanggal
+            IconButton(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.align(Alignment.CenterStart)
+            ) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Kembali", tint = Navy)
+            }
+            Text(
+                text = "Transaksi $category",
+                // PERBAIKAN: Style disamakan dengan 'Total Saldo' di halaman Riwayat
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = Navy
+            )
+        }
+
+        // PERBAIKAN: Konten utama yang bisa di-scroll
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Navy)
+            }
+        } else if (transactions.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 val monthYearFormat = SimpleDateFormat("MMMM yyyy", Locale("id"))
                 Text(
                     text = "Tidak ada transaksi untuk kategori ini di bulan ${monthYearFormat.format(currentMonth.time)}.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color.Gray,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 32.dp),
                     textAlign = TextAlign.Center
                 )
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp) // Sedikit menambah jarak antar item
-                ) {
-                    items(transactions) { transaction ->
-                        val amount = transaction["amount"] as? Long ?: 0L
-                        // PERBAIKAN: Memperbaiki format tanggal
-                        val dateFormat = SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("id"))
-                        val date = (transaction["date"] as? com.google.firebase.Timestamp)?.toDate()?.let {
-                            dateFormat.format(it)
-                        } ?: "Tanggal Tidak Diketahui"
-                        val note = transaction["note"] as? String ?: "Tidak ada catatan"
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(transactions) { transaction ->
+                    val amount = transaction["amount"] as? Long ?: 0L
+                    val dateFormat = SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("id"))
+                    val date = (transaction["date"] as? com.google.firebase.Timestamp)?.toDate()?.let {
+                        dateFormat.format(it)
+                    } ?: "Tanggal Tidak Diketahui"
+                    val note = transaction["note"] as? String ?: "Tidak ada catatan"
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp), // Menyamakan corner radius dengan HomeScreen
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFE6F0FA)
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFE6F0FA)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp) // Memberi jarak antar teks
-                            ) {
-                                // PERBAIKAN: Menggunakan font dari theme
-                                Text(
-                                    text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = Navy
-                                )
-                                // PERBAIKAN: Menggunakan font dari theme
-                                Text(
-                                    text = "Tanggal: $date",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Gray
-                                )
-                                // PERBAIKAN: Menggunakan font dari theme
-                                Text(
-                                    text = "Catatan: $note",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Gray
-                                )
-                            }
+                            Text(
+                                text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(amount)}",
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                color = Navy
+                            )
+                            Text(
+                                text = "Tanggal: $date",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
+                            Text(
+                                text = "Catatan: $note",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
                         }
                     }
                 }
