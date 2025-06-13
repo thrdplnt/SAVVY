@@ -2,7 +2,6 @@ package com.example.savvy.ui.tambah
 
 import android.Manifest
 import android.app.DatePickerDialog
-import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
@@ -31,12 +30,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.example.savvy.data.LocalTransaction
 import com.example.savvy.data.Screen
 import com.example.savvy.data.Transaction
 import com.example.savvy.ui.components.SavvyDropdownMenu
@@ -50,13 +47,12 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import com.example.savvy.ui.wallet.WalletViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TambahTransaksiScreen(
     navController: NavController,
     viewModel: TambahTransaksiViewModel = hiltViewModel(),
-    walletViewModel: WalletViewModel = hiltViewModel(),
     transactionId: String? = null
 ) {
     val context = LocalContext.current
@@ -64,7 +60,6 @@ fun TambahTransaksiScreen(
     val walletsState by viewModel.wallets.collectAsState()
 
     var transactionKind by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("Tunai") } // Ini adalah sumber dana/dompet
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
@@ -85,11 +80,8 @@ fun TambahTransaksiScreen(
     var initialLocalDbIdForEdit by remember { mutableStateOf<Long?>(null) }
     var initialFirestoreIdForEdit by remember { mutableStateOf<String?>(null) }
 
-    val transactionWalletTypes = listOf("Tunai", "Non-Tunai", "Tabungan")
-//    var selectedWalletType by remember { mutableStateOf(type) } // State untuk dropdown dompet
-
-    var selectedWalletIdState by remember { mutableStateOf("") } // Menyimpan ID dompet yang dipilih
-    var selectedWalletNameState by remember { mutableStateOf("Pilih Dompet") } // Menyimpan NAMA dompet yang dipilih
+    var selectedWalletIdState by remember { mutableStateOf("") }
+    var selectedWalletNameState by remember { mutableStateOf("Pilih Dompet") }
 
     val transactionKinds = listOf("Pemasukan", "Pengeluaran")
     val expenseCategories = listOf(
@@ -97,24 +89,21 @@ fun TambahTransaksiScreen(
         "Tagihan", "Kesehatan", "Belanja", "Uang Keluar"
     )
 
-    // Efek untuk menginisialisasi pilihan dompet saat daftar dompet berubah atau saat mode edit
+    // ... (Logika LaunchedEffect tidak ada perubahan)
     LaunchedEffect(walletsState, loadedTransactionForEdit, isEditMode) {
         if (!isEditMode && walletsState.isNotEmpty() && selectedWalletIdState.isBlank()) {
-            // Set default untuk mode tambah baru jika dompet sudah dimuat
             val defaultWallet = walletsState.find { it.name.equals("Tunai", ignoreCase = true) } ?: walletsState.firstOrNull()
             defaultWallet?.let {
                 selectedWalletIdState = it.id
                 selectedWalletNameState = it.name
             }
         } else if (isEditMode && loadedTransactionForEdit != null) {
-            // Jika mode edit dan data transaksi sudah dimuat
             val currentWallet = walletsState.find { it.id == loadedTransactionForEdit!!.walletId }
             if (currentWallet != null) {
                 selectedWalletIdState = currentWallet.id
                 selectedWalletNameState = currentWallet.name
             } else if (!loadedTransactionForEdit!!.walletId.isNullOrBlank()){
-                // Jika walletId dari transaksi lama ada tapi tidak ditemukan di daftar dompet saat ini
-                selectedWalletNameState = loadedTransactionForEdit!!.type // type di Transaction adalah nama dompet lama
+                selectedWalletNameState = loadedTransactionForEdit!!.type
                 selectedWalletIdState = loadedTransactionForEdit!!.walletId
             }
         }
@@ -122,332 +111,241 @@ fun TambahTransaksiScreen(
 
     LaunchedEffect(transactionId) {
         if (transactionId == null) {
-            isEditMode = false
-            transactionKind = ""
-            type = transactionWalletTypes.firstOrNull() ?: "Tunai"
-            selectedWalletIdState = type
-            selectedWalletNameState = ""
-            amount = ""
-            category = ""
-            note = ""
-            date = Date()
-            dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date)
-            newImageUri = null
-            existingImageUrlFromDb = null
-            existingLocalImageUriForDisplay = null
-            isImageRemovedByUser = false
-            loadedTransactionForEdit = null
-            initialClientGeneratedIdForEdit = null
-            initialLocalDbIdForEdit = null
-            initialFirestoreIdForEdit = null
-            return@LaunchedEffect
+            isEditMode = false; transactionKind = ""; selectedWalletIdState = ""; selectedWalletNameState = "Pilih Dompet"; amount = ""; category = ""; note = ""; date = Date(); dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date); newImageUri = null; existingImageUrlFromDb = null; existingLocalImageUriForDisplay = null; isImageRemovedByUser = false; loadedTransactionForEdit = null; initialClientGeneratedIdForEdit = null; initialLocalDbIdForEdit = null; initialFirestoreIdForEdit = null; return@LaunchedEffect
         }
-
-        isEditMode = true
-        isLoading = true
-        Log.d("TambahScreen", "Edit mode. TransactionID from route: $transactionId")
-
+        isEditMode = true; isLoading = true
         if (transactionId.startsWith("local_")) {
             val localId = transactionId.removePrefix("local_").toLongOrNull()
             if (localId != null) {
-                initialLocalDbIdForEdit = localId
-                viewModel.getLocalTransactionByDbId(localId) { localTx ->
+                initialLocalDbIdForEdit = localId; viewModel.getLocalTransactionByDbId(localId) { localTx ->
                     if (localTx != null) {
-                        loadedTransactionForEdit = Transaction(
-                            id = localTx.firestoreId ?: transactionId,
-                            clientGeneratedId = localTx.clientGeneratedId,
-                            userId = localTx.userId,
-                            type = localTx.type,
-                            amount = localTx.amount,
-                            category = localTx.category,
-                            note = localTx.note,
-                            date = localTx.date,
-                            imageUrl = localTx.imageUrl,
-                            imageUri = localTx.imageUri,
-                            walletId = localTx.walletId ?: localTx.type
-                        )
-                        initialClientGeneratedIdForEdit = localTx.clientGeneratedId
-                        initialFirestoreIdForEdit = localTx.firestoreId
-
-                        transactionKind = if (localTx.category == "Pemasukan") "Pemasukan" else "Pengeluaran"
-                        type = localTx.type
-                        selectedWalletIdState = localTx.walletId ?: localTx.type
-                        amount = localTx.amount.toString()
-                        category = localTx.category
-                        note = localTx.note
-                        date = localTx.date
-                        dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date)
-                        existingImageUrlFromDb = localTx.imageUrl
-                        existingLocalImageUriForDisplay = localTx.imageUri
-                        Log.d("TambahScreen", "Loaded from Room: $localTx")
+                        loadedTransactionForEdit = Transaction(id = localTx.firestoreId ?: transactionId, clientGeneratedId = localTx.clientGeneratedId, userId = localTx.userId, type = localTx.type, amount = localTx.amount, category = localTx.category, note = localTx.note, date = localTx.date, imageUrl = localTx.imageUrl, imageUri = localTx.imageUri, walletId = localTx.walletId ?: localTx.type)
+                        initialClientGeneratedIdForEdit = localTx.clientGeneratedId; initialFirestoreIdForEdit = localTx.firestoreId; transactionKind = if (localTx.category == "Pemasukan") "Pemasukan" else "Pengeluaran"; selectedWalletIdState = localTx.walletId ?: localTx.type; amount = localTx.amount.toString(); category = localTx.category; note = localTx.note; date = localTx.date; dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date); existingImageUrlFromDb = localTx.imageUrl; existingLocalImageUriForDisplay = localTx.imageUri
                     } else {
-                        Toast.makeText(context, "Transaksi lokal tidak ditemukan", Toast.LENGTH_SHORT).show()
-                        navController.popBackStack()
+                        Toast.makeText(context, "Transaksi lokal tidak ditemukan", Toast.LENGTH_SHORT).show(); navController.popBackStack()
                     }
                     isLoading = false
                 }
             } else {
-                Toast.makeText(context, "ID transaksi lokal tidak valid", Toast.LENGTH_SHORT).show()
-                navController.popBackStack()
-                isLoading = false
+                Toast.makeText(context, "ID transaksi lokal tidak valid", Toast.LENGTH_SHORT).show(); navController.popBackStack(); isLoading = false
             }
-        } else { // Ini adalah Firestore ID
+        } else {
             initialFirestoreIdForEdit = transactionId
-            FirebaseFirestore.getInstance().collection("transactions").document(transactionId)
-                .get()
-                .addOnSuccessListener { document ->
-                    if (document.exists()) {
-                        val txFromFirestore = document.toObject(Transaction::class.java)?.copy(id = document.id)
-                        txFromFirestore?.let { trans ->
-                            loadedTransactionForEdit = trans
-                            initialClientGeneratedIdForEdit = trans.clientGeneratedId
-
-                            transactionKind = if (trans.category == "Pemasukan") "Pemasukan" else "Pengeluaran"
-                            type = trans.type
-                            selectedWalletIdState = trans.walletId.ifBlank { trans.type }
-                            amount = trans.amount.toString()
-                            category = trans.category
-                            note = trans.note
-                            date = trans.date ?: Date()
-                            dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date)
-                            existingImageUrlFromDb = trans.imageUrl
-                            Log.d("TambahScreen", "Loaded from Firestore: $trans")
-                        }
-                    } else {
-                        Toast.makeText(context, "Transaksi tidak ditemukan di server", Toast.LENGTH_SHORT).show()
-                        navController.popBackStack()
+            FirebaseFirestore.getInstance().collection("transactions").document(transactionId).get().addOnSuccessListener { document ->
+                if (document.exists()) {
+                    val txFromFirestore = document.toObject(Transaction::class.java)?.copy(id = document.id)
+                    txFromFirestore?.let { trans ->
+                        loadedTransactionForEdit = trans; initialClientGeneratedIdForEdit = trans.clientGeneratedId; transactionKind = if (trans.category == "Pemasukan") "Pemasukan" else "Pengeluaran"; selectedWalletIdState = trans.walletId.ifBlank { trans.type }; amount = trans.amount.toString(); category = trans.category; note = trans.note; date = trans.date ?: Date(); dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date); existingImageUrlFromDb = trans.imageUrl
                     }
-                    isLoading = false
+                } else {
+                    Toast.makeText(context, "Transaksi tidak ditemukan di server", Toast.LENGTH_SHORT).show(); navController.popBackStack()
                 }
-                .addOnFailureListener { e ->
-                    Toast.makeText(context, "Gagal memuat data: ${e.message}", Toast.LENGTH_SHORT).show()
-                    isLoading = false
-                    navController.popBackStack()
-                }
+                isLoading = false
+            }.addOnFailureListener { e ->
+                Toast.makeText(context, "Gagal memuat data: ${e.message}", Toast.LENGTH_SHORT).show(); isLoading = false; navController.popBackStack()
+            }
         }
     }
 
-    val calendar = Calendar.getInstance()
-    val datePickerDialog = DatePickerDialog(
-        context, { _, year, month, dayOfMonth ->
-            calendar.set(year, month, dayOfMonth); date = calendar.time
-            dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date)
-        },
-        calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)
-    )
 
-    val pickImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { newImageUri = it; isImageRemovedByUser = false; existingImageUrlFromDb = null; existingLocalImageUriForDisplay = null }
-    }
+    val calendar = Calendar.getInstance()
+    val datePickerDialog = DatePickerDialog(context, { _, year, month, dayOfMonth -> calendar.set(year, month, dayOfMonth); date = calendar.time; dateText = SimpleDateFormat("dd/MM/yyyy", Locale("id")).format(date) }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+    val pickImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let { newImageUri = it; isImageRemovedByUser = false; existingImageUrlFromDb = null; existingLocalImageUriForDisplay = null } }
     val tempCameraImageUri = remember { mutableStateOf<Uri?>(null) }
-    val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) tempCameraImageUri.value?.let { newImageUri = it; isImageRemovedByUser = false; existingImageUrlFromDb = null; existingLocalImageUriForDisplay = null }
-    }
-    val requestCameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (isGranted) {
-            val photoFile = File(context.cacheDir, "savvy_temp_cam_${System.currentTimeMillis()}.jpg")
-            val photoUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
-            tempCameraImageUri.value = photoUri
-            takePictureLauncher.launch(photoUri)
-        } else Toast.makeText(context, "Izin kamera diperlukan", Toast.LENGTH_SHORT).show()
-    }
+    val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success -> if (success) tempCameraImageUri.value?.let { newImageUri = it; isImageRemovedByUser = false; existingImageUrlFromDb = null; existingLocalImageUriForDisplay = null } }
+    val requestCameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted -> if (isGranted) { val photoFile = File(context.cacheDir, "savvy_temp_cam_${System.currentTimeMillis()}.jpg"); val photoUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile); tempCameraImageUri.value = photoUri; takePictureLauncher.launch(photoUri) } else Toast.makeText(context, "Izin kamera diperlukan", Toast.LENGTH_SHORT).show() }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(White).padding(16.dp).verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+        modifier = Modifier
+            .fillMaxSize()
+            .background(White)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween // Untuk menyeimbangkan jika ada IconButton
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 24.dp, bottom = 16.dp),
+            contentAlignment = Alignment.Center
         ) {
             if (isEditMode) {
-                IconButton(onClick = { navController.popBackStack() }, modifier = Modifier.size(48.dp)) { // Beri ukuran agar konsisten
+                IconButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
                     Icon(Icons.Default.Close, "Batal", tint = Navy)
                 }
-            } else {
-                Spacer(Modifier.size(48.dp)) // Spacer kosong untuk menyeimbangkan
             }
             Text(
                 text = if (isEditMode) "Edit Transaksi" else "Tambah Transaksi",
-                fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Navy,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f) // Agar teks mengisi ruang dan bisa di tengah
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = Navy
             )
-            Spacer(Modifier.size(48.dp)) // Spacer kosong untuk menyeimbangkan sisi kanan
         }
 
-        SavvyDropdownMenu(
-            label = "Pilih Dompetku",
-            items = walletsState.map { it.name }.ifEmpty { listOf("Memuat dompet...") }, // Daftar nama dompet
-            selectedItem = if (walletsState.isEmpty() && selectedWalletIdState.isBlank()) "Memuat..." else selectedWalletNameState,
-            onItemSelected = { walletName ->
-                selectedWalletNameState = walletName
-                selectedWalletIdState = walletsState.find { it.name == walletName }?.id ?: ""
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = walletsState.isNotEmpty() // Aktifkan jika dompet sudah dimuat
-        )
-        Spacer(Modifier.height(16.dp))
-
-        SavvyTextField(
-            value = amount,
-            onValueChange = { v -> if (v.all { it.isDigit() }) amount = v },
-            label = "Masukkan Jumlah Uang",
-            modifier = Modifier.fillMaxWidth(),
-            keyboardType = KeyboardType.Number // Menggunakan parameter KeyboardType
-        )
-        Spacer(Modifier.height(16.dp))
-
-        SavvyDropdownMenu(
-            label = "Pilih Jenis Transaksi", items = transactionKinds, selectedItem = transactionKind,
-            onItemSelected = { transactionKind = it; category = if (it == "Pemasukan") "Pemasukan" else "" },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(16.dp))
-
-        SavvyDropdownMenu(
-            label = "Pilih Kategori",
-            items = if (transactionKind == "Pemasukan") listOf("Pemasukan") else expenseCategories,
-            selectedItem = category, onItemSelected = { category = it }, modifier = Modifier.fillMaxWidth(),
-            enabled = transactionKind != "Pemasukan" || category == "Pemasukan"
-        )
-        Spacer(Modifier.height(16.dp))
-
-        SavvyTextField(
-            value = note,
-            onValueChange = { note = it },
-            label = "Tulis Catatan",
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = false // Izinkan multiple lines untuk catatan
-        )
-        Spacer(Modifier.height(16.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            SavvyTextField(
-                value = dateText,
-                onValueChange = { /* Dikosongkan karena readOnly dan dihandle picker */ },
-                label = "Tanggal (dd/mm/yyyy)",
-                modifier = Modifier.weight(1f),
-                readOnly = true, // Menggunakan parameter baru dari SavvyTextField
-                onClickAction = { datePickerDialog.show() } // Menggunakan parameter baru
-            )
-            IconButton(onClick = { datePickerDialog.show() }) { // Tombol ikon tetap ada
-                Icon(Icons.Default.DateRange, "Pilih Tanggal", tint = Navy)
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-
-        Button(
-            onClick = { showPhotoOptionsDialog = true },
-            modifier = Modifier.fillMaxWidth().height(56.dp).drawBehind {
-                val stroke = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
-                drawRoundRect(color = Navy, style = stroke, cornerRadius = CornerRadius(8.dp.toPx()))
-            },
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Navy),
-            elevation = ButtonDefaults.buttonElevation(0.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = when {
-                    newImageUri != null -> "Gambar Baru Dipilih"
-                    existingLocalImageUriForDisplay != null && !isImageRemovedByUser -> "Lihat Gambar Lokal"
-                    existingImageUrlFromDb != null && !isImageRemovedByUser -> "Lihat Gambar Cloud"
-                    else -> "Tambahkan Gambar"
+            SavvyDropdownMenu(
+                label = "Pilih Dompetku",
+                items = walletsState.map { it.name }.ifEmpty { listOf("Memuat dompet...") },
+                selectedItem = if (walletsState.isEmpty() && selectedWalletIdState.isBlank()) "Memuat..." else selectedWalletNameState,
+                onItemSelected = { walletName ->
+                    selectedWalletNameState = walletName
+                    selectedWalletIdState = walletsState.find { it.name == walletName }?.id ?: ""
                 },
-                color = Navy, fontSize = 16.sp
+                modifier = Modifier.fillMaxWidth(),
+                enabled = walletsState.isNotEmpty()
             )
-        }
-        Spacer(Modifier.height(24.dp))
 
-        Button(
-            onClick = {
-                if (transactionKind.isEmpty()) { Toast.makeText(context, "Jenis transaksi harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
-                if (selectedWalletIdState.isEmpty()) { Toast.makeText(context, "Dompet harus dipilih", Toast.LENGTH_SHORT).show(); return@Button } // Validasi selectedWalletType
-                if (amount.isEmpty()) { Toast.makeText(context, "Jumlah uang harus diisi", Toast.LENGTH_SHORT).show(); return@Button }
-                val amountLongParsed = amount.toLongOrNull()
-                if (amountLongParsed == null || amountLongParsed <= 0) { Toast.makeText(context, "Jumlah harus angka positif", Toast.LENGTH_SHORT).show(); return@Button }
-                if (category.isEmpty()) { Toast.makeText(context, "Kategori harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
+            SavvyTextField(
+                value = amount,
+                onValueChange = { v -> if (v.all { it.isDigit() }) amount = v },
+                label = "Masukkan Jumlah Uang",
+                modifier = Modifier.fillMaxWidth(),
+                keyboardType = KeyboardType.Number
+            )
 
-                val user = auth.currentUser
-                if (user == null) { Toast.makeText(context, "Harap login ulang", Toast.LENGTH_SHORT).show(); navController.navigate(Screen.Login.route); return@Button }
+            SavvyDropdownMenu(
+                label = "Pilih Jenis Transaksi", items = transactionKinds, selectedItem = transactionKind,
+                onItemSelected = {
+                    transactionKind = it
+                    if (it == "Pemasukan") category = "Pemasukan" else category = ""
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                isLoading = true
+            SavvyDropdownMenu(
+                label = "Pilih Kategori",
+                items = expenseCategories,
+                selectedItem = category,
+                onItemSelected = { selectedCategory ->
+                    category = selectedCategory
+                    if (selectedCategory.isNotEmpty()) transactionKind = "Pengeluaran"
+                },
+                modifier = Modifier.fillMaxWidth(),
+                // PERBAIKAN: Logika diubah agar hanya non-aktif saat jenisnya "Pemasukan"
+                enabled = transactionKind != "Pemasukan"
+            )
 
-                // PENTING: clientGeneratedId di sini harus konsisten.
-                // Untuk transaksi baru, generate UUID baru.
-                // Untuk edit, gunakan initialClientGeneratedIdForEdit.
-                val finalClientGeneratedId = if (isEditMode) {
-                    initialClientGeneratedIdForEdit.takeIf { !it.isNullOrBlank() } ?: loadedTransactionForEdit?.clientGeneratedId ?: UUID.randomUUID().toString()
-                } else {
-                    UUID.randomUUID().toString()
-                }
+            SavvyTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = "Tulis Catatan",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false
+            )
 
-
-                val transactionDataForViewModel = Transaction(
-                    userId = user.uid,
-                    type = selectedWalletNameState, // Gunakan selectedWalletType untuk type dompet
-                    amount = amountLongParsed,
-                    category = category,
-                    note = note,
-                    date = date,
-                    walletId = selectedWalletIdState, // walletId juga diisi dengan selectedWalletType
-                    imageUrl = if (isEditMode && newImageUri == null && !isImageRemovedByUser) existingImageUrlFromDb else null,
-                    clientGeneratedId = finalClientGeneratedId, // PASTIKAN clientGeneratedId ada
-                    imageUri = null
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                SavvyTextField(
+                    value = dateText,
+                    onValueChange = { /* Dikosongkan */ },
+                    label = "Tanggal (dd/mm/yyyy)",
+                    modifier = Modifier.weight(1f),
+                    readOnly = true,
+                    onClickAction = { datePickerDialog.show() }
                 )
-
-                if (isEditMode) {
-                    viewModel.updateTransaction(
-                        existingFirestoreId = initialFirestoreIdForEdit,
-                        existingLocalId = initialLocalDbIdForEdit,
-                        existingClientGeneratedId = finalClientGeneratedId, // Gunakan finalClientGeneratedId yang sudah pasti non-nullable
-                        transactionInput = transactionDataForViewModel,
-                        newImageUri = newImageUri,
-                        isImageRemoved = isImageRemovedByUser,
-                        onSuccess = {
-                            isLoading = false
-                            Toast.makeText(context, "Transaksi berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                            navController.previousBackStackEntry?.savedStateHandle?.set("refresh_riwayat", true)
-                            navController.popBackStack()
-                        },
-                        onFailure = { e ->
-                            isLoading = false; Toast.makeText(context, "Gagal memperbarui: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                    )
-                } else {
-                    viewModel.saveTransaction(
-                        transactionInput = transactionDataForViewModel,
-                        imageUri = newImageUri,
-                        onSuccess = { firestoreId ->
-                            isLoading = false
-                            val message = if (firestoreId != null) "Tambah Transaksi Sukses" else "Transaksi disimpan lokal"
-                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            navController.navigate(Screen.Home.route) {
-                                popUpTo(navController.graph.startDestinationId) { inclusive = false }; launchSingleTop = true
-                            }
-                        },
-                        onFailure = { e ->
-                            isLoading = false; Toast.makeText(context, "Gagal menyimpan: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                    )
+                IconButton(onClick = { datePickerDialog.show() }) {
+                    Icon(Icons.Default.DateRange, "Pilih Tanggal", tint = Navy)
                 }
-            },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            enabled = !isLoading,
-            shape = RoundedCornerShape(25.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Beige, contentColor = Navy)
-        ) {
-            if (isLoading) CircularProgressIndicator(color = Navy, modifier = Modifier.size(24.dp))
-            else Text(if (isEditMode) "Simpan Perubahan" else "Simpan", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
+
+            Button(
+                onClick = { showPhotoOptionsDialog = true },
+                modifier = Modifier.fillMaxWidth().height(56.dp).drawBehind {
+                    val stroke = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                    drawRoundRect(color = Navy, style = stroke, cornerRadius = CornerRadius(8.dp.toPx()))
+                },
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Navy),
+                elevation = ButtonDefaults.buttonElevation(0.dp)
+            ) {
+                Text(
+                    text = when {
+                        newImageUri != null -> "Gambar Baru Dipilih"
+                        existingLocalImageUriForDisplay != null && !isImageRemovedByUser -> "Lihat Gambar"
+                        existingImageUrlFromDb != null && !isImageRemovedByUser -> "Lihat Gambar"
+                        else -> "Tambahkan Gambar"
+                    },
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    if (transactionKind.isEmpty()) { Toast.makeText(context, "Jenis transaksi harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
+                    if (selectedWalletIdState.isEmpty()) { Toast.makeText(context, "Dompet harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
+                    if (amount.isEmpty()) { Toast.makeText(context, "Jumlah uang harus diisi", Toast.LENGTH_SHORT).show(); return@Button }
+                    val amountLongParsed = amount.toLongOrNull()
+                    if (amountLongParsed == null || amountLongParsed <= 0) { Toast.makeText(context, "Jumlah harus angka positif", Toast.LENGTH_SHORT).show(); return@Button }
+                    if (category.isEmpty()) { Toast.makeText(context, "Kategori harus dipilih", Toast.LENGTH_SHORT).show(); return@Button }
+
+                    val user = auth.currentUser
+                    if (user == null) { Toast.makeText(context, "Harap login ulang", Toast.LENGTH_SHORT).show(); navController.navigate(Screen.Login.route); return@Button }
+
+                    isLoading = true
+
+                    val finalClientGeneratedId = if (isEditMode) {
+                        initialClientGeneratedIdForEdit.takeIf { !it.isNullOrBlank() } ?: loadedTransactionForEdit?.clientGeneratedId ?: UUID.randomUUID().toString()
+                    } else {
+                        UUID.randomUUID().toString()
+                    }
+
+                    val transactionDataForViewModel = Transaction(userId = user.uid, type = selectedWalletNameState, amount = amountLongParsed, category = category, note = note, date = date, walletId = selectedWalletIdState, imageUrl = if (isEditMode && newImageUri == null && !isImageRemovedByUser) existingImageUrlFromDb else null, clientGeneratedId = finalClientGeneratedId, imageUri = null)
+
+                    if (isEditMode) {
+                        viewModel.updateTransaction(
+                            existingFirestoreId = initialFirestoreIdForEdit,
+                            existingLocalId = initialLocalDbIdForEdit,
+                            existingClientGeneratedId = finalClientGeneratedId,
+                            transactionInput = transactionDataForViewModel,
+                            newImageUri = newImageUri,
+                            isImageRemoved = isImageRemovedByUser,
+                            onSuccess = {
+                                isLoading = false; Toast.makeText(context, "Transaksi berhasil diperbarui", Toast.LENGTH_SHORT).show(); navController.previousBackStackEntry?.savedStateHandle?.set("refresh_riwayat", true); navController.popBackStack()
+                            },
+                            onFailure = { e ->
+                                isLoading = false; Toast.makeText(context, "Gagal memperbarui: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    } else {
+                        viewModel.saveTransaction(
+                            transactionInput = transactionDataForViewModel,
+                            imageUri = newImageUri,
+                            onSuccess = {
+                                isLoading = false; val message = "Tambah Transaksi Sukses"; Toast.makeText(context, message, Toast.LENGTH_SHORT).show(); navController.navigate(Screen.Home.route) { popUpTo(navController.graph.startDestinationId) { inclusive = false }; launchSingleTop = true }
+                            },
+                            onFailure = { e ->
+                                isLoading = false; Toast.makeText(context, "Gagal menyimpan: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                enabled = !isLoading,
+                shape = RoundedCornerShape(25.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Beige, contentColor = Navy)
+            ) {
+                if (isLoading) CircularProgressIndicator(color = Navy, modifier = Modifier.size(24.dp))
+                else Text(
+                    if (isEditMode) "Simpan Perubahan" else "Simpan",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
-        Spacer(Modifier.height(80.dp))
     }
 
     if (showPhotoOptionsDialog) {
         AlertDialog(
             onDismissRequest = { showPhotoOptionsDialog = false },
-            title = { Text("Pilih Opsi Gambar", style = MaterialTheme.typography.headlineMedium, color = Navy) },
+            title = { Text("Pilih Opsi Gambar", style = MaterialTheme.typography.titleLarge, color = Navy) },
             text = {
                 Column {
                     TextButton(onClick = { showPhotoOptionsDialog = false; pickImageLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
