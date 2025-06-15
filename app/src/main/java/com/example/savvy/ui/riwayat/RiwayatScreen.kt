@@ -1,8 +1,9 @@
+
 package com.example.savvy.ui.riwayat
 
 import android.app.DatePickerDialog
+import android.graphics.BitmapFactory
 import android.util.Log
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,17 +14,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -31,27 +30,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.example.savvy.R
 import com.example.savvy.data.Screen
 import com.example.savvy.data.Transaction
+import com.example.savvy.ui.components.SimpleBarChart
 import com.example.savvy.ui.components.TransactionItem
 import com.example.savvy.ui.theme.*
+import com.example.savvy.utils.ExportUtils
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.atan2
-import kotlin.math.sqrt
-import com.example.savvy.ui.components.SimpleBarChart
-import android.graphics.BitmapFactory
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import com.example.savvy.R
-import com.example.savvy.utils.ExportUtils
-import kotlinx.coroutines.launch
-import com.example.savvy.data.Wallet
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,7 +54,6 @@ fun RiwayatScreen(
     val walletsState by viewModel.wallets.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
 
-
     // State untuk transaksi
     var filteredTransactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
 
@@ -73,7 +62,6 @@ fun RiwayatScreen(
     var totalPemasukan by rememberSaveable { mutableLongStateOf(0L) }
     var totalPengeluaran by rememberSaveable { mutableLongStateOf(0L) }
     var isLoading by remember { mutableStateOf(true) }
-
     var isSaldoVisible by rememberSaveable { mutableStateOf(true) }
 
     // State untuk filter Dompetku
@@ -102,11 +90,7 @@ fun RiwayatScreen(
     var showEndDatePicker by remember { mutableStateOf(false) }
 
     var showExportDialog by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope() // Untuk menjalankan operasi ekspor di coroutine
-
-    // State untuk pie chart
-    val categoryData = remember { mutableStateMapOf<String, Pair<Int, Long>>() }
-    var totalChartAmount by rememberSaveable { mutableLongStateOf(0L) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Fungsi untuk memformat tanggal untuk subtitle
     val subtitleDateFormat = SimpleDateFormat("dd MMM yyyy", Locale("id"))
@@ -132,159 +116,14 @@ fun RiwayatScreen(
         "$dompetInfo - $periodeInfo"
     }
 
-    // Hitung saldo, filter transaksi, dan data pie chart
-//    fun filterTransactions() {
-//        Log.d(
-//            "RiwayatScreen",
-//            "Filtering transactions. Wallet: $selectedWallet, Range: $selectedRange"
-//        )
-//
-//
-//        val startTime = System.currentTimeMillis()
-//        var pemasukan = 0L
-//        var pengeluaran = 0L
-//        var tunai = 0L
-//        var tabungan = 0L
-//        var nonTunai = 0L
-//        val categoryMap = mutableMapOf<String, Pair<Int, Long>>()
-//
-//        val calendar = Calendar.getInstance()
-//        val currentDate = calendar.time
-//
-//        val startDateFilter: Date
-//        var endDateFilter: Date = currentDate
-//
-//        when (selectedRange) {
-//            "1 Hari Terakhir" -> {
-//                calendar.add(Calendar.DAY_OF_YEAR, -1)
-//                calendar.set(Calendar.HOUR_OF_DAY, 0)
-//                calendar.set(Calendar.MINUTE, 0)
-//                calendar.set(Calendar.SECOND, 0)
-//                calendar.set(Calendar.MILLISECOND, 0)
-//                startDateFilter = calendar.time
-//                calendar.time = currentDate
-//                calendar.set(Calendar.HOUR_OF_DAY, 23)
-//                calendar.set(Calendar.MINUTE, 59)
-//                calendar.set(Calendar.SECOND, 59)
-//                calendar.set(Calendar.MILLISECOND, 999)
-//                endDateFilter = calendar.time
-//            }
-//
-//            "7 Hari Terakhir" -> {
-//                calendar.add(Calendar.WEEK_OF_YEAR, -1)
-//                calendar.set(Calendar.HOUR_OF_DAY, 0)
-//                calendar.set(Calendar.MINUTE, 0)
-//                calendar.set(Calendar.SECOND, 0)
-//                calendar.set(Calendar.MILLISECOND, 0)
-//                startDateFilter = calendar.time
-//                calendar.time = currentDate
-//                calendar.set(Calendar.HOUR_OF_DAY, 23)
-//                calendar.set(Calendar.MINUTE, 59)
-//                calendar.set(Calendar.SECOND, 59)
-//                calendar.set(Calendar.MILLISECOND, 999)
-//                endDateFilter = calendar.time
-//            }
-//
-//            "Pilih Bulan" -> {
-//                calendar.time = selectedMonth.time
-//                calendar.set(Calendar.DAY_OF_MONTH, 1)
-//                calendar.set(Calendar.HOUR_OF_DAY, 0)
-//                calendar.set(Calendar.MINUTE, 0)
-//                calendar.set(Calendar.SECOND, 0)
-//                calendar.set(Calendar.MILLISECOND, 0)
-//                startDateFilter = calendar.time
-//                calendar.set(
-//                    Calendar.DAY_OF_MONTH,
-//                    calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
-//                )
-//                calendar.set(Calendar.HOUR_OF_DAY, 23)
-//                calendar.set(Calendar.MINUTE, 59)
-//                calendar.set(Calendar.SECOND, 59)
-//                calendar.set(Calendar.MILLISECOND, 999)
-//                endDateFilter = calendar.time
-//            }
-//
-//            "Pilih Tanggal" -> {
-//                calendar.time = startDate.time
-//                calendar.set(Calendar.HOUR_OF_DAY, 0)
-//                calendar.set(Calendar.MINUTE, 0)
-//                calendar.set(Calendar.SECOND, 0)
-//                calendar.set(Calendar.MILLISECOND, 0)
-//                startDateFilter = calendar.time
-//                calendar.time = endDate.time
-//                calendar.set(Calendar.HOUR_OF_DAY, 23)
-//                calendar.set(Calendar.MINUTE, 59)
-//                calendar.set(Calendar.SECOND, 59)
-//                calendar.set(Calendar.MILLISECOND, 999)
-//                endDateFilter = calendar.time
-//            }
-//
-//            else -> {
-//                calendar.set(Calendar.DAY_OF_MONTH, 1)
-//                calendar.set(Calendar.HOUR_OF_DAY, 0)
-//                calendar.set(Calendar.MINUTE, 0)
-//                calendar.set(Calendar.SECOND, 0)
-//                calendar.set(Calendar.MILLISECOND, 0)
-//                startDateFilter = calendar.time
-//                calendar.time = currentDate
-//                endDateFilter = calendar.time
-//            }
-//        }
-//
-//        val filtered = mutableListOf<Transaction>()
-//        transactions.forEach { transaction ->
-//            val transactionDate = transaction.date ?: return@forEach
-//            val matchesWallet = selectedWallet == "Semua" || transaction.type == selectedWallet
-//            val matchesDate =
-//                !transactionDate.before(startDateFilter) && !transactionDate.after(endDateFilter)
-//            if (matchesWallet && matchesDate) {
-//                filtered.add(transaction)
-//                val amount = transaction.amount.toLong()
-//                if (transaction.category == "Pemasukan") {
-//                    pemasukan += amount
-//                    // Tambahkan Pemasukan ke pie chart
-//                    val currentData = categoryMap["Pemasukan"] ?: Pair(0, 0L)
-//                    categoryMap["Pemasukan"] =
-//                        Pair(currentData.first + 1, currentData.second + amount)
-//                } else {
-//                    pengeluaran += amount
-//                    // Tambahkan kategori pengeluaran ke pie chart
-//                    val currentData = categoryMap[transaction.category] ?: Pair(0, 0L)
-//                    categoryMap[transaction.category] =
-//                        Pair(currentData.first + 1, currentData.second + amount)
-//                }
-//            }
-//
-//            // Hitung saldo per dompet
-//            val amount = transaction.amount.toLong()
-//            when (transaction.type) {
-//                "Tunai" -> if (transaction.category == "Pemasukan") tunai += amount else tunai -= amount
-//                "Tabungan" -> if (transaction.category == "Pemasukan") tabungan += amount else tabungan -= amount
-//                "Non-Tunai" -> if (transaction.category == "Pemasukan") nonTunai += amount else nonTunai -= amount
-//            }
-//        }
-//
-//        totalPemasukan = pemasukan
-//        totalPengeluaran = pengeluaran
-//        totalSaldo = tunai + tabungan + nonTunai
-//        filteredTransactions = filtered.sortedByDescending { it.date }
-//        categoryData.clear()
-//        categoryData.putAll(categoryMap)
-//        totalChartAmount = pemasukan + pengeluaran
-//        Log.d(
-//            "RiwayatScreen",
-//            "Filtered ${filteredTransactions.size} transactions in ${System.currentTimeMillis() - startTime}ms, " +
-//                    "Pie chart data: $categoryMap, Total: $totalChartAmount"
-//        )
-//    }
-
+    // Hitung saldo, filter transaksi
     fun calculateAndFilterData() {
         Log.d("RiwayatScreen", "Filter triggered. VM_TX_Size: ${transactions.size}, Wallet: $selectedWallet, Range: $selectedRange")
         val startTime = System.currentTimeMillis()
         var currentPemasukanFiltered = 0L
         var currentPengeluaranFiltered = 0L
 
-        // 1. Hitung Saldo Total dari SEMUA transaksi (tidak terpengaruh filter)
+        // Hitung Saldo Total dari SEMUA transaksi
         val saldoPerDompet = mutableMapOf<String, Long>()
         walletsState.forEach { wallet -> saldoPerDompet[wallet.name] = 0L }
 
@@ -297,36 +136,62 @@ fun RiwayatScreen(
         totalSaldo = saldoPerDompet.values.sum()
         Log.d("RiwayatScreen", "Total Saldo Recalculated: $totalSaldo from ${saldoPerDompet.size} wallets")
 
-
-        // 2. Filter transaksi untuk tampilan list dan kalkulasi Pemasukan/Pengeluaran terfilter
+        // Filter transaksi untuk tampilan list dan kalkulasi Pemasukan/Pengeluaran terfilter
         val today = Calendar.getInstance()
-        val startDateFilterCal: Calendar = Calendar.getInstance()
-        val endDateFilterCal: Calendar = Calendar.getInstance()
+        val startDateFilterCal = Calendar.getInstance()
+        val endDateFilterCal = Calendar.getInstance()
 
         endDateFilterCal.time = today.time
-        endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23); endDateFilterCal.set(Calendar.MINUTE, 59); endDateFilterCal.set(Calendar.SECOND, 59); endDateFilterCal.set(Calendar.MILLISECOND, 999)
+        endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23)
+        endDateFilterCal.set(Calendar.MINUTE, 59)
+        endDateFilterCal.set(Calendar.SECOND, 59)
+        endDateFilterCal.set(Calendar.MILLISECOND, 999)
 
         when (selectedRange) {
             "1 Hari Terakhir" -> {
                 startDateFilterCal.time = today.time
-                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
+                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0)
+                startDateFilterCal.set(Calendar.MINUTE, 0)
+                startDateFilterCal.set(Calendar.SECOND, 0)
+                startDateFilterCal.set(Calendar.MILLISECOND, 0)
             }
             "7 Hari Terakhir" -> {
                 startDateFilterCal.time = today.time
                 startDateFilterCal.add(Calendar.DAY_OF_YEAR, -6)
-                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
+                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0)
+                startDateFilterCal.set(Calendar.MINUTE, 0)
+                startDateFilterCal.set(Calendar.SECOND, 0)
+                startDateFilterCal.set(Calendar.MILLISECOND, 0)
             }
             "Pilih Bulan" -> {
                 startDateFilterCal.time = selectedMonth.time
-                startDateFilterCal.set(Calendar.DAY_OF_MONTH, 1); startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
+                startDateFilterCal.set(Calendar.DAY_OF_MONTH, 1)
+                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0)
+                startDateFilterCal.set(Calendar.MINUTE, 0)
+                startDateFilterCal.set(Calendar.SECOND, 0)
+                startDateFilterCal.set(Calendar.MILLISECOND, 0)
                 endDateFilterCal.time = selectedMonth.time
-                endDateFilterCal.set(Calendar.DAY_OF_MONTH, endDateFilterCal.getActualMaximum(Calendar.DAY_OF_MONTH)); endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23); endDateFilterCal.set(Calendar.MINUTE, 59); endDateFilterCal.set(Calendar.SECOND, 59); endDateFilterCal.set(Calendar.MILLISECOND, 999)
+                endDateFilterCal.set(Calendar.DAY_OF_MONTH, endDateFilterCal.getActualMaximum(Calendar.DAY_OF_MONTH))
+                endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23)
+                endDateFilterCal.set(Calendar.MINUTE, 59)
+                endDateFilterCal.set(Calendar.SECOND, 59)
+                endDateFilterCal.set(Calendar.MILLISECOND, 999)
             }
             "Pilih Tanggal" -> {
-                startDateFilterCal.time = startDate.time; startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0); startDateFilterCal.set(Calendar.MINUTE, 0); startDateFilterCal.set(Calendar.SECOND, 0); startDateFilterCal.set(Calendar.MILLISECOND, 0)
-                endDateFilterCal.time = endDate.time; endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23); endDateFilterCal.set(Calendar.MINUTE, 59); endDateFilterCal.set(Calendar.SECOND, 59); endDateFilterCal.set(Calendar.MILLISECOND, 999)
+                startDateFilterCal.time = startDate.time
+                startDateFilterCal.set(Calendar.HOUR_OF_DAY, 0)
+                startDateFilterCal.set(Calendar.MINUTE, 0)
+                startDateFilterCal.set(Calendar.SECOND, 0)
+                startDateFilterCal.set(Calendar.MILLISECOND, 0)
+                endDateFilterCal.time = endDate.time
+                endDateFilterCal.set(Calendar.HOUR_OF_DAY, 23)
+                endDateFilterCal.set(Calendar.MINUTE, 59)
+                endDateFilterCal.set(Calendar.SECOND, 59)
+                endDateFilterCal.set(Calendar.MILLISECOND, 999)
             }
-            else -> { startDateFilterCal.add(Calendar.YEAR, -100) }
+            else -> {
+                startDateFilterCal.add(Calendar.YEAR, -100)
+            }
         }
         val startDateFilterDate = startDateFilterCal.time
         val endDateFilterDate = endDateFilterCal.time
@@ -352,31 +217,13 @@ fun RiwayatScreen(
     LaunchedEffect(selectedWallet, selectedRange, selectedMonth.timeInMillis, startDate.timeInMillis, endDate.timeInMillis, transactions) {
         isLoading = true
         try {
-            calculateAndFilterData() // Panggil fungsi yang sudah di-refactor
+            calculateAndFilterData()
         } catch (e: Exception) {
             Log.e("RiwayatScreen", "Error in LaunchedEffect: $e", e)
         } finally {
             isLoading = false
         }
     }
-
-//    LaunchedEffect(
-//        selectedWallet,
-//        selectedRange,
-//        selectedMonth.timeInMillis,
-//        startDate.timeInMillis,
-//        endDate.timeInMillis,
-//        transactions
-//    ) {
-//        isLoading = true
-//        try {
-//            filterTransactions()
-//        } catch (e: Exception) {
-//            Log.e("RiwayatScreen", "Error filtering transactions: $e")
-//        } finally {
-//            isLoading = false
-//        }
-//    }
 
     // Dialog untuk memilih tanggal mulai
     if (showStartDatePicker) {
@@ -510,7 +357,7 @@ fun RiwayatScreen(
                     )
                 }
             },
-            containerColor = White
+            containerColor = Color.White
         )
     }
 
@@ -590,423 +437,314 @@ fun RiwayatScreen(
                     )
                 }
             },
-            containerColor = White
+            containerColor = Color.White
         )
     }
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showExportDialog = true },
-                containerColor = Navy,
-                contentColor = White
-            ) {
-                Icon(Icons.Filled.Download, contentDescription = "Ekspor Riwayat")
-            }
-        },
-        floatingActionButtonPosition = FabPosition.End // Posisi di kanan bawah
-    ) { innerPadding ->
+    // Dialog untuk pilihan ekspor
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("Pilih Format Ekspor", color = Navy) },
+            text = {
+                Column {
+                    TextButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                val logoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.logo_savvy_small)
+                                val uri = ExportUtils.exportTransactionsToPdf(
+                                    context,
+                                    filteredTransactions,
+                                    "Riwayat_Transaksi_Savvy_${System.currentTimeMillis()}",
+                                    "Laporan Riwayat Transaksi Savvy",
+                                    logoBitmap
+                                )
+                                uri?.let { ExportUtils.openFile(context, it, "application/pdf") }
+                            }
+                            showExportDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Ekspor ke PDF", color = Navy) }
+
+                    TextButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                val uri = ExportUtils.exportTransactionsToCsv(
+                                    context,
+                                    filteredTransactions,
+                                    "Riwayat_Transaksi_Savvy_${System.currentTimeMillis()}"
+                                )
+                                uri?.let { ExportUtils.openFile(context, it, "text/csv") }
+                            }
+                            showExportDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Ekspor ke CSV", color = Navy) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showExportDialog = false }) { Text("Batal", color = Navy) }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // UI Utama tanpa Scaffold
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .padding(innerPadding) // Penting untuk Scaffold
                 .fillMaxSize()
-                .background(White)
-                .padding(horizontal = 16.dp, vertical = 16.dp) // Padding untuk konten utama
+                .background(Color.White)
+                .padding(horizontal = 24.dp) // Hanya padding horizontal untuk konten
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (isLoading && transactions.isEmpty()) {
-                Spacer(modifier = Modifier.height(60.dp))
-                CircularProgressIndicator(color = Navy, modifier = Modifier.size(48.dp))
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Navy,
+                    modifier = Modifier.size(48.dp)
+                )
             } else {
-                Text("Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalSaldo)}", style = MaterialTheme.typography.headlineLarge, color = Navy, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) // Mengurangi padding atas
-                Text("Total Saldo Saat Ini", style = MaterialTheme.typography.labelMedium, color = Shadow, modifier = Modifier.padding(bottom = 16.dp))
-
-                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(modifier = Modifier.weight(1f)) { /* Dropdown Dompet */
-                        OutlinedButton(onClick = { walletExpanded = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = Navy)) {
-                            Text(selectedWallet, style = MaterialTheme.typography.bodyLarge); Icon(Icons.Default.ArrowDropDown, "Dropdown", tint = Navy)
-                        }
-                        DropdownMenu(expanded = walletExpanded, onDismissRequest = { walletExpanded = false }, modifier = Modifier.background(White).fillMaxWidth()) {
-                            dynamicWalletOptions.forEach { option -> DropdownMenuItem(text = { Text(option, style = MaterialTheme.typography.bodyLarge) }, onClick = { selectedWallet = option; walletExpanded = false }) }
+                // Total Saldo
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id", "ID")).format(totalSaldo)}" else "Rp ••••••",
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = Navy
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(
+                            onClick = { isSaldoVisible = !isSaldoVisible },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isSaldoVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = "Toggle Saldo Visibility",
+                                tint = Navy.copy(alpha = 0.7f)
+                            )
                         }
                     }
-                    Box(modifier = Modifier.weight(1f)) { /* Dropdown Rentang */
-                        OutlinedButton(onClick = { rangeExpanded = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = Navy)) {
-                            Text(selectedRange, style = MaterialTheme.typography.bodyLarge); Icon(Icons.Default.ArrowDropDown, "Dropdown", tint = Navy)
-                        }
-                        DropdownMenu(expanded = rangeExpanded, onDismissRequest = { rangeExpanded = false }, modifier = Modifier.background(White).fillMaxWidth()) {
-                            rangeOptions.forEach { option -> DropdownMenuItem(text = { Text(option, style = MaterialTheme.typography.bodyLarge) }, onClick = { selectedRange = option; rangeExpanded = false; if (option == "Pilih Bulan") showMonthPicker = true else if (option == "Pilih Tanggal") showDateRangePicker = true }) }
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Total Saldo",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Shadow,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                 }
 
-                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Beige), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
-                    Column(modifier = Modifier.padding(16.dp)){
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Pemasukan (Filter)", style = MaterialTheme.typography.bodyLarge, color = Navy); Text("Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan)}", style = MaterialTheme.typography.bodyMedium, color = GreenSavvy)
+                // Dropdown Filters
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Box(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedButton(
+                            onClick = { walletExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Navy
+                            )
+                        ) {
+                            Text(
+                                text = selectedWallet,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Dropdown",
+                                tint = Navy
+                            )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Pengeluaran (Filter)", style = MaterialTheme.typography.bodyLarge, color = Navy); Text("Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPengeluaran)}", style = MaterialTheme.typography.bodyMedium, color = ErrorRed)
-                        }
-                        Spacer(modifier = Modifier.height(12.dp)); Divider(color = Navy.copy(alpha = 0.5f), thickness = 1.dp); Spacer(modifier = Modifier.height(12.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Selisih (Filter)", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), color = Navy); Text("Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan - totalPengeluaran)}", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = if (totalPemasukan - totalPengeluaran >= 0) GreenSavvy else ErrorRed)
+                        DropdownMenu(
+                            expanded = walletExpanded,
+                            onDismissRequest = { walletExpanded = false },
+                            modifier = Modifier
+                                .background(Color.White)
+                                .fillMaxWidth()
+                        ) {
+                            dynamicWalletOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
+                                    onClick = {
+                                        selectedWallet = option
+                                        walletExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
-                }
 
-                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = White), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Grafik Pemasukan dan Pengeluaran", style = MaterialTheme.typography.titleMedium, color = Navy, modifier = Modifier.padding(bottom = 16.dp))
-                        if ((totalPemasukan > 0 || totalPengeluaran > 0) && !isLoading) {
-                            SimpleBarChart(pemasukan = totalPemasukan, pengeluaran = totalPengeluaran)
-                        } else if (!isLoading) {
-                            Text("Tidak ada data untuk grafik.", modifier = Modifier.padding(16.dp), textAlign = TextAlign.Center, color = Shadow, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Box(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedButton(
+                            onClick = { rangeExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Navy
+                            )
+                        ) {
+                            Text(
+                                text = selectedRange,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Dropdown",
+                                tint = Navy
+                            )
                         }
-                    }
-                }
-
-                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = White), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
-                        Text("Riwayat Transaksi (Filter)", style = MaterialTheme.typography.titleLarge, color = Navy, modifier = Modifier.padding(bottom = 12.dp))
-                        if (filteredTransactions.isEmpty() && !isLoading) {
-                            Text("Tidak ada transaksi untuk filter ini.", style = MaterialTheme.typography.bodyMedium, color = Shadow, modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 20.dp))
-                        } else if (!isLoading) {
-                            filteredTransactions.forEach { transaction ->
-                                TransactionItem(transaction = transaction, onClick = { navController.navigate(Screen.DetailTransaksi.createRoute(transaction.id)) })
-                                Divider(color = Shadow.copy(alpha = 0.3f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                        DropdownMenu(
+                            expanded = rangeExpanded,
+                            onDismissRequest = { rangeExpanded = false },
+                            modifier = Modifier
+                                .background(Color.White)
+                                .fillMaxWidth()
+                        ) {
+                            rangeOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
+                                    onClick = {
+                                        selectedRange = option
+                                        rangeExpanded = false
+                                        if (option == "Pilih Bulan") {
+                                            showMonthPicker = true
+                                        } else if (option == "Pilih Tanggal") {
+                                            showDateRangePicker = true
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
                 }
-            }
-        }
 
-        // Dialog untuk pilihan ekspor
-        if (showExportDialog) {
-            AlertDialog(
-                onDismissRequest = { showExportDialog = false },
-                title = { Text("Pilih Format Ekspor", color = Navy) },
-                text = {
-                    Column {
-                        TextButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    val logoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.logo_savvy_small) // Ganti dengan logo Anda
-                                    val uri = ExportUtils.exportTransactionsToPdf(
-                                        context,
-                                        filteredTransactions,
-                                        "Riwayat_Transaksi_Savvy_${System.currentTimeMillis()}",
-                                        "Laporan Riwayat Transaksi Savvy",
-                                        logoBitmap
-                                    )
-                                    uri?.let { ExportUtils.openFile(context, it, "application/pdf") }
-                                }
-                                showExportDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Ekspor ke PDF", color = Navy) }
-
-                        TextButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    val uri = ExportUtils.exportTransactionsToCsv(
-                                        context,
-                                        filteredTransactions,
-                                        "Riwayat_Transaksi_Savvy_${System.currentTimeMillis()}"
-                                    )
-                                    uri?.let { ExportUtils.openFile(context, it, "text/csv") }
-                                }
-                                showExportDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Ekspor ke CSV", color = Navy) }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showExportDialog = false }) { Text("Batal", color = Navy) }
-                },
-                containerColor = White
-            )
-        }
-
-    // UI
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(White)
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Total Saldo
-        if (isLoading) {
-            CircularProgressIndicator(
-                color = Navy,
-                modifier = Modifier.size(48.dp)
-            )
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp), // Beri padding vertikal pada seluruh bagian
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Row untuk menampung nominal dan ikon agar bisa sejajar
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id", "ID")).format(totalSaldo)}" else "Rp ••••••",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = Navy
-                        // HAPUS -> Modifier.padding(bottom = 12.dp) DARI SINI
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = { isSaldoVisible = !isSaldoVisible },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isSaldoVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = "Toggle Saldo Visibility",
-                            tint = Navy.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-
-                // Spacer untuk memberi jarak antara nominal dan label di bawahnya
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "Total Saldo",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Shadow,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-
-            // Dropdown Filters
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Box(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    OutlinedButton(
-                        onClick = { walletExpanded = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Navy
-                        )
-                    ) {
-                        Text(
-                            text = selectedWallet,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Dropdown",
-                            tint = Navy
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = walletExpanded,
-                        onDismissRequest = { walletExpanded = false },
-                        modifier = Modifier
-                            .background(White)
-                            .fillMaxWidth()
-                    ) {
-                        dynamicWalletOptions.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
-                                onClick = {
-                                    selectedWallet = option
-                                    walletExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Box(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    OutlinedButton(
-                        onClick = { rangeExpanded = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Navy
-                        )
-                    ) {
-                        Text(
-                            text = selectedRange,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Dropdown",
-                            tint = Navy
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = rangeExpanded,
-                        onDismissRequest = { rangeExpanded = false },
-                        modifier = Modifier
-                            .background(White)
-                            .fillMaxWidth()
-                    ) {
-                        rangeOptions.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
-                                onClick = {
-                                    selectedRange = option
-                                    rangeExpanded = false
-                                    if (option == "Pilih Bulan") {
-                                        showMonthPicker = true
-                                    } else if (option == "Pilih Tanggal") {
-                                        showDateRangePicker = true
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Pemasukan dan Pengeluaran
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Beige
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
+                // Pemasukan dan Pengeluaran
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp)
+                        .padding(bottom = 24.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Beige
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
                     ) {
-                        Text(
-                            text = "Pemasukan",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Navy
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Pemasukan",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Navy
+                            )
+                            Text(
+                                text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Navy
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Pengeluaran",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Navy
+                            )
+                            Text(
+                                text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPengeluaran)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Navy
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Divider(
+                            color = Navy,
+                            thickness = 1.dp,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        Text(
-                            text = "Rp ${
-                                NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan)
-                            }",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Navy
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Pengeluaran",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Navy
-                        )
-                        Text(
-                            text = "Rp ${
-                                NumberFormat.getNumberInstance(Locale("id"))
-                                    .format(totalPengeluaran)
-                            }",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Navy
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Divider(
-                        color = Navy,
-                        thickness = 1.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Jumlah",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Navy
-                        )
-                        Text(
-                            text = "Rp ${
-                                NumberFormat.getNumberInstance(Locale("id"))
-                                    .format(totalPemasukan - totalPengeluaran)
-                            }",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (totalPemasukan - totalPengeluaran >= 0) Navy else ErrorRed
-                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Jumlah",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Navy
+                            )
+                            Text(
+                                text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalPemasukan - totalPengeluaran)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (totalPemasukan - totalPengeluaran >= 0) Navy else ErrorRed
+                            )
+                        }
                     }
                 }
-            }
 
-            // GRAFIK BATANG BARU
-//            if ((totalPemasukan > 0 || totalPengeluaran > 0) && !isLoading) { // Hanya tampilkan jika ada data & tidak loading
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // Grafik Batang
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Text(
-                        text = "Diagram Pemasukan dan Pengeluaran", // JUDUL UTAMA GRAFIK
-                        style = MaterialTheme.typography.titleMedium, // Anda bisa sesuaikan stylenya
-                        color = Navy,
-                        modifier = Modifier.padding(bottom = 4.dp) // Jarak ke subjudul
-                    )
-                    Text(
-                        text = filterSubtitle, // SUBJUDUL DINAMIS
-                        style = MaterialTheme.typography.bodySmall, // Style untuk subjudul
-                        color = Navy.copy(alpha = 0.7f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 16.dp) // Jarak ke grafik
-                    )
-
-                    if ((totalPemasukan > 0 || totalPengeluaran > 0) && !isLoading) {
-                        SimpleBarChart(
-                            pemasukan = totalPemasukan,
-                            pengeluaran = totalPengeluaran
-                        )
-                    } else if (!isLoading) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
-                            "Tidak ada data untuk grafik pada filter ini.",
-                            modifier = Modifier.padding(16.dp),
+                            text = "Diagram Pemasukan dan Pengeluaran",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Navy,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        Text(
+                            text = filterSubtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Navy.copy(alpha = 0.7f),
                             textAlign = TextAlign.Center,
-                            color = Shadow,
-                            style = MaterialTheme.typography.bodyMedium
+                            modifier = Modifier.padding(bottom = 16.dp)
                         )
+                        if (totalPemasukan > 0 || totalPengeluaran > 0) {
+                            SimpleBarChart(pemasukan = totalPemasukan, pengeluaran = totalPengeluaran)
+                        } else {
+                            Text(
+                                "Tidak ada data untuk grafik pada filter ini.",
+                                modifier = Modifier.padding(16.dp),
+                                textAlign = TextAlign.Center,
+                                color = Shadow,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
                 }
-            }
 
                 // Mutasi (Riwayat Transaksi)
                 Card(
@@ -1015,7 +753,7 @@ fun RiwayatScreen(
                         .padding(bottom = 24.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = White
+                        containerColor = Color.White
                     ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
@@ -1032,7 +770,11 @@ fun RiwayatScreen(
                             color = Navy,
                             modifier = Modifier.fillMaxWidth()
                         )
-
+                        Divider(
+                            color = Navy.copy(alpha = 0.3f),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
                         if (filteredTransactions.isEmpty()) {
                             Text(
                                 text = "Tidak ada transaksi",
@@ -1063,6 +805,18 @@ fun RiwayatScreen(
                     }
                 }
             }
+        }
+
+        // FloatingActionButton ditempatkan secara manual
+        FloatingActionButton(
+            onClick = { showExportDialog = true },
+            containerColor = Navy,
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+        ) {
+            Icon(Icons.Default.Download, contentDescription = "Ekspor Riwayat")
         }
     }
 }
