@@ -69,6 +69,7 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                                     appRepository.updateUserSession(userId) // Update sesi di repo
                                     appRepository.onUserLogin(uploader)
                                     appRepository.createDefaultWalletsIfNotExist(userId) // BUAT DOMPET DEFAULT
+                                    appRepository.saveFcmToken()
 
                                 }
                             }
@@ -112,7 +113,9 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                             Log.d("AuthViewModel", "Login berhasil, memastikan dompet default ada untuk: $userId")
                             appRepository.updateUserSession(userId) // Update sesi di repo
                             appRepository.createDefaultWalletsIfNotExist(userId) // PASTIKAN DOMPET DEFAULT ADA
-                                appRepository.onUserLogin(uploader) // Panggil juga onUserLogin dari AppRepository untuk sinkronisasi data lain
+                            appRepository.onUserLogin(uploader) // Panggil juga onUserLogin dari AppRepository untuk sinkronisasi data lain
+                            appRepository.saveFcmToken()
+
                         }
                     }
                     _authState.update { it.copy(isLoading = false, isSuccess = true) }

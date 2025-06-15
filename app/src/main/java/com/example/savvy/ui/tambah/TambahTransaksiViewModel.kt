@@ -28,10 +28,13 @@ import java.util.UUID
 import javax.inject.Inject
 import com.example.savvy.data.AppRepository // Import AppRepository
 import com.example.savvy.data.Wallet // Import Wallet
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.SharingStarted // Import SharingStarted
 import kotlinx.coroutines.flow.StateFlow // Import StateFlow
 import kotlinx.coroutines.flow.stateIn // Import stateIn
 import kotlinx.coroutines.flow.SharingStarted.Companion.WhileSubscribed
+import com.github.kittinunf.fuel.Fuel
+import com.github.kittinunf.fuel.coroutines.awaitStringResponse
 
 @HiltViewModel
 class TambahTransaksiViewModel @Inject constructor(
@@ -42,6 +45,7 @@ class TambahTransaksiViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance() // Tambahkan instance auth
 
     val wallets: StateFlow<List<Wallet>> = appRepository.wallets
         .stateIn(
@@ -180,6 +184,11 @@ class TambahTransaksiViewModel @Inject constructor(
                     )
                     Log.d("TambahVM", "Updated local TX (Room ID: $localDbId). Synced. Firestore ID: $firestoreDocId")
                     onSuccess(firestoreDocId)
+
+                    if (firestoreDocId != null && transactionInput.category != "Pemasukan") {
+                        triggerBudgetCheck(firestoreDocId)
+                    }
+
                 } else {
                     Log.d("TambahVM", "Offline mode. Saved to Room only (ClientUUID: $clientGeneratedIdToUse)")
                     onSuccess(null)
@@ -248,7 +257,8 @@ class TambahTransaksiViewModel @Inject constructor(
                         id = ""
                     )
 
-                    if (!finalFirestoreIdForUpdate.isNullOrBlank()) {
+                    if (!finalFirestoreIdForUpdate.isNullOrBlank() && transactionInput.category != "Pemasukan") {
+                        triggerBudgetCheck(finalFirestoreIdForUpdate)
                         db.collection("transactions").document(finalFirestoreIdForUpdate).set(firestoreTxData).await()
                         Log.i("TambahVM-Update", "Updated Firestore doc ID: $finalFirestoreIdForUpdate")
                     } else {
@@ -305,6 +315,33 @@ class TambahTransaksiViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("TambahVM-Update", "Error updating transaction: $e", e)
                 onFailure(e)
+            }
+        }
+    }
+
+    private fun triggerBudgetCheck(transactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val userToken = auth.currentUser?.getIdToken(false)?.await()?.token
+                if (userToken == null) {
+                    Log.w("BudgetCheck", "User token is null, cannot trigger check.")
+                    return@launch
+                }
+
+                Log.d("BudgetCheck", "Triggering budget check for tx: $transactionId")
+
+                val url = "http://10.0.2.2:8000/check-budget"
+                val body = """{ "transactionId": "$transactionId" }"""
+
+                val (request, response, result) = Fuel.post(url)
+                    .header("Authorization", "Bearer $userToken")
+                    .header("Content-Type", "application/json")
+                    .body(body)
+                    .awaitStringResponse()
+
+                Log.d("BudgetCheck", "Response from server [${response.statusCode}]: $result")
+            } catch (e: Exception) {
+                Log.e("BudgetCheck", "Gagal memanggil server untuk cek anggaran: $e")
             }
         }
     }

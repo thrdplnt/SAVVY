@@ -25,6 +25,7 @@ import java.io.File
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.google.firebase.messaging.FirebaseMessaging
 
 @Singleton
 class AppRepository @Inject constructor(
@@ -218,6 +219,28 @@ class AppRepository @Inject constructor(
             startListeners(userId)
         } else {
             stopListeners()
+        }
+    }
+
+    // --- FUNGSI BARU UNTUK MENYIMPAN FCM TOKEN ---
+    suspend fun saveFcmToken() {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Log.w("AppRepository", "Cannot save FCM token, user is not logged in.")
+            return
+        }
+        try {
+            // Ambil token FCM saat ini dari perangkat
+            val token = FirebaseMessaging.getInstance().token.await()
+            val tokenData = hashMapOf("token" to token)
+
+            // Simpan ke koleksi fcm_tokens dengan ID dokumen adalah UID pengguna
+            db.collection("fcm_tokens").document(userId)
+                .set(tokenData)
+                .await()
+            Log.d("AppRepository", "FCM Token successfully saved to Firestore for user $userId")
+        } catch (e: Exception) {
+            Log.e("AppRepository", "Error saving FCM token", e)
         }
     }
 
