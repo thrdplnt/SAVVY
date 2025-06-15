@@ -44,10 +44,14 @@ import kotlin.math.sqrt
 import com.example.savvy.ui.components.SimpleBarChart
 import android.graphics.BitmapFactory
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import com.example.savvy.R
 import com.example.savvy.utils.ExportUtils
 import kotlinx.coroutines.launch
 import com.example.savvy.data.Wallet
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +73,8 @@ fun RiwayatScreen(
     var totalPemasukan by rememberSaveable { mutableLongStateOf(0L) }
     var totalPengeluaran by rememberSaveable { mutableLongStateOf(0L) }
     var isLoading by remember { mutableStateOf(true) }
+
+    var isSaldoVisible by rememberSaveable { mutableStateOf(true) }
 
     // State untuk filter Dompetku
     val dynamicWalletOptions = remember(walletsState) {
@@ -742,18 +748,47 @@ fun RiwayatScreen(
                 modifier = Modifier.size(48.dp)
             )
         } else {
-            Text(
-                text = "Rp ${NumberFormat.getNumberInstance(Locale("id")).format(totalSaldo)}",
-                style = MaterialTheme.typography.headlineLarge,
-                color = Navy,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            Text(
-                text = "Total saldo",
-                style = MaterialTheme.typography.labelSmall,
-                color = Shadow,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp), // Beri padding vertikal pada seluruh bagian
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Row untuk menampung nominal dan ikon agar bisa sejajar
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isSaldoVisible) "Rp ${NumberFormat.getNumberInstance(Locale("id", "ID")).format(totalSaldo)}" else "Rp ••••••",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = Navy
+                        // HAPUS -> Modifier.padding(bottom = 12.dp) DARI SINI
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = { isSaldoVisible = !isSaldoVisible },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isSaldoVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = "Toggle Saldo Visibility",
+                            tint = Navy.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+
+                // Spacer untuk memberi jarak antara nominal dan label di bawahnya
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "Total Saldo",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Shadow,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
 
             // Dropdown Filters
             Row(
