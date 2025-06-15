@@ -39,11 +39,13 @@ fun DompetkuScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var showDeleteConfirmationDialog by remember { mutableStateOf<Wallet?>(null) } // Menyimpan objek Wallet yang akan dihapus
+    var walletToDelete by remember { mutableStateOf<WalletUiItem?>(null) } // Menyimpan WalletUiItem
 
     LaunchedEffect(uiState.successMessage) {
         uiState.successMessage?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            // Secara eksplisit panggil fungsi untuk menutup dialog dari UI
+            // sebagai reaksi atas event sukses dari ViewModel.
             viewModel.clearUserMessages()
         }
     }
@@ -89,11 +91,11 @@ fun DompetkuScreen(
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            if (uiState.isLoading && uiState.wallets.isEmpty()) {
+            if (uiState.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Navy)
                 }
-            } else if (uiState.wallets.isEmpty() && !uiState.isLoading) {
+            } else if (uiState.walletItems.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(top = 50.dp), contentAlignment = Alignment.Center) {
                     Text(
                         "Belum ada dompet.\nKetuk tombol (+) untuk menambah.",
@@ -107,18 +109,11 @@ fun DompetkuScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 80.dp)
                 ) {
-                    items(uiState.wallets, key = { it.id }) { wallet ->
+                    items(uiState.walletItems, key = { it.wallet.id }) { item ->
                         WalletItemCard(
-                            wallet = wallet,
-                            onEditClick = { viewModel.onOpenEditDialog(wallet) },
-                            onDeleteClick = {
-                                val defaultWallets = listOf("Tunai", "Tabungan", "Non-Tunai")
-                                if (defaultWallets.any { it.equals(wallet.name, ignoreCase = true) }) {
-                                    Toast.makeText(context, "Dompet default ('${wallet.name}') tidak bisa dihapus.", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    showDeleteConfirmationDialog = wallet
-                                }
-                            }
+                            walletItem = item, // Kirim seluruh UI Item
+                            onEditClick = { viewModel.onOpenEditDialog(item) },
+                            onDeleteClick = { walletToDelete = item }
                         )
                     }
                 }
@@ -135,30 +130,28 @@ fun DompetkuScreen(
                 )
             }
 
-            showDeleteConfirmationDialog?.let { walletToDelete ->
+            walletToDelete?.let { itemToDelete ->
                 AlertDialog(
-                    onDismissRequest = { showDeleteConfirmationDialog = null },
+                    onDismissRequest = { walletToDelete = null },
                     title = { Text("Konfirmasi Hapus", color = Navy) },
-                    text = { Text("Apakah Anda yakin ingin menghapus dompet '${walletToDelete.name}'?", color = Navy.copy(alpha = 0.8f)) }, // Pesan lebih singkat
+                    text = { Text("Apakah Anda yakin ingin menghapus dompet '${itemToDelete.wallet.name}'?", color = Navy.copy(alpha = 0.8f)) },
                     confirmButton = {
                         Button(
                             onClick = {
-                                // --- PERBAIKAN DI SINI ---
-                                viewModel.deleteWallet(walletToDelete) // Kirim seluruh objek Wallet
-                                showDeleteConfirmationDialog = null
+                                viewModel.deleteWallet(itemToDelete) // Panggil fungsi ViewModel
+                                walletToDelete = null // Tutup dialog
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
                         ) { Text("Hapus", color = White) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showDeleteConfirmationDialog = null }) {
-                            Text("Batal", color = Navy)
-                        }
+                        TextButton(onClick = { walletToDelete = null }) { Text("Batal", color = Navy) }
                     },
                     containerColor = White,
                     shape = RoundedCornerShape(16.dp)
                 )
             }
+
         }
     }
 }
@@ -166,7 +159,7 @@ fun DompetkuScreen(
 // Composable WalletItemCard dan AddEditWalletDialog tetap sama seperti respons sebelumnya
 @Composable
 fun WalletItemCard(
-    wallet: Wallet,
+    walletItem: WalletUiItem,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -175,7 +168,7 @@ fun WalletItemCard(
             maximumFractionDigits = 0
         }
     }
-    val isDefaultWallet = listOf("Tunai", "Tabungan", "Non-Tunai").any { it.equals(wallet.name, ignoreCase = true) }
+    val isDefaultWallet = listOf("Tunai", "Tabungan", "Non-Tunai").any { it.equals(walletItem.wallet.name, ignoreCase = true) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -199,12 +192,12 @@ fun WalletItemCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = wallet.name,
+                    text = walletItem.wallet.name,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = Navy
                 )
                 Text(
-                    text = "Saldo: ${currencyFormat.format(wallet.balance)}",
+                    text = "Saldo: ${currencyFormat.format(walletItem.balance)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Navy.copy(alpha = 0.8f)
                 )

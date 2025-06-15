@@ -46,8 +46,8 @@ class HomeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             combine(
-                repository.wallets,
-                allTransactionsFlow
+                repository.wallets, // Flow<List<Wallet>>
+                repository.transactions
             ) { wallets, transactions ->
                 Log.d("HomeViewModel", "Combining data. Wallets: ${wallets.size}, Transactions: ${transactions.size}")
 

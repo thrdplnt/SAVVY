@@ -64,7 +64,11 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                             user.uid.let { userId ->
                                 viewModelScope.launch {
                                     Log.d("AuthViewModel", "Registrasi berhasil, membuat dompet default untuk: $userId")
+
+                                    appRepository.updateUserSession(userId) // Update sesi di repo
+                                    appRepository.onUserLogin()
                                     appRepository.createDefaultWalletsIfNotExist(userId) // BUAT DOMPET DEFAULT
+
                                 }
                             }
                             _authState.update { it.copy(isLoading = false, isSuccess = true) }
@@ -74,6 +78,7 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                             // Tetap anggap sukses registrasi, tapi mungkin beri pesan tambahan
                             user.uid.let { userId -> // Tetap buat dompet default
                                 viewModelScope.launch {
+                                    appRepository.onUserLogin()
                                     appRepository.createDefaultWalletsIfNotExist(userId)
                                 }
                             }
@@ -104,6 +109,7 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                     auth.currentUser?.uid?.let { userId ->
                         viewModelScope.launch {
                             Log.d("AuthViewModel", "Login berhasil, memastikan dompet default ada untuk: $userId")
+                            appRepository.updateUserSession(userId) // Update sesi di repo
                             appRepository.createDefaultWalletsIfNotExist(userId) // PASTIKAN DOMPET DEFAULT ADA
                             appRepository.onUserLogin() // Panggil juga onUserLogin dari AppRepository untuk sinkronisasi data lain
                         }
@@ -135,7 +141,7 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
 
     fun logout() {
         auth.signOut()
-//        appRepository.stopListeners()
+        appRepository.updateUserSession(null) // Beri tahu repo bahwa tidak ada user
         _authState.update { AuthState() } // Reset ke state awal yang bersih
     }
 

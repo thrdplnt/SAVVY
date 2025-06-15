@@ -53,6 +53,13 @@ class RiwayatViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    val transactions: StateFlow<List<Transaction>> = appRepository.transactions
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     init {
         Log.d("RiwayatViewModel", "ViewModel initialized")
         monitorNetworkStatus()
@@ -118,52 +125,52 @@ class RiwayatViewModel @Inject constructor(
         }
     }
 
-    val transactions: StateFlow<List<Transaction>> = combine(
-        localTransactionsFlow,
-        firestoreTransactionsFlow
-    ) { localTxsFromRoom, firestoreTxs ->
-        Log.i("RiwayatVM-Combine", "Combining: ${localTxsFromRoom.size} local, ${firestoreTxs.size} Firestore.")
-        val transactionMap = mutableMapOf<String, Transaction>()
-
-        firestoreTxs.forEach { firestoreTx ->
-            val key = firestoreTx.clientGeneratedId.takeIf { !it.isNullOrBlank() } ?: firestoreTx.id
-            if (key.isNotBlank()) {
-                transactionMap[key] = firestoreTx
-            }
-        }
-
-        localTxsFromRoom.forEach { mappedLocalTx ->
-            val key = mappedLocalTx.clientGeneratedId.takeIf { !it.isNullOrBlank() } ?: mappedLocalTx.id // Gunakan clientGeneratedId jika ada, jika tidak fallback ke id (yang bisa local_ atau firestoreId)
-            if (key.isBlank()) {
-                return@forEach
-            }
-
-            val existingInMap = transactionMap[key]
-            if (existingInMap != null) {
-                transactionMap[key] = existingInMap.copy(
-                    imageUri = mappedLocalTx.imageUri ?: existingInMap.imageUri,
-                    imageUrl = mappedLocalTx.imageUrl ?: existingInMap.imageUrl, // Prioritaskan yang lebih baru/ada
-                    type = mappedLocalTx.type, // Ambil dari lokal karena mungkin nama dompet di lokal lebih update jika belum sync
-                    amount = mappedLocalTx.amount,
-                    category = mappedLocalTx.category,
-                    note = mappedLocalTx.note,
-                    date = mappedLocalTx.date,
-                    walletId = mappedLocalTx.walletId
-                )
-            } else {
-                transactionMap[key] = mappedLocalTx
-            }
-        }
-
-        transactionMap.values.sortedByDescending { it.date }
-    }.catch { e ->
-        Log.e("RiwayatViewModel", "Combine operator error: $e", e)
-        emit(emptyList<Transaction>())
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList<Transaction>()
-    )
+//    val transactions: StateFlow<List<Transaction>> = combine(
+//        localTransactionsFlow,
+//        firestoreTransactionsFlow
+//    ) { localTxsFromRoom, firestoreTxs ->
+//        Log.i("RiwayatVM-Combine", "Combining: ${localTxsFromRoom.size} local, ${firestoreTxs.size} Firestore.")
+//        val transactionMap = mutableMapOf<String, Transaction>()
+//
+//        firestoreTxs.forEach { firestoreTx ->
+//            val key = firestoreTx.clientGeneratedId.takeIf { !it.isNullOrBlank() } ?: firestoreTx.id
+//            if (key.isNotBlank()) {
+//                transactionMap[key] = firestoreTx
+//            }
+//        }
+//
+//        localTxsFromRoom.forEach { mappedLocalTx ->
+//            val key = mappedLocalTx.clientGeneratedId.takeIf { !it.isNullOrBlank() } ?: mappedLocalTx.id // Gunakan clientGeneratedId jika ada, jika tidak fallback ke id (yang bisa local_ atau firestoreId)
+//            if (key.isBlank()) {
+//                return@forEach
+//            }
+//
+//            val existingInMap = transactionMap[key]
+//            if (existingInMap != null) {
+//                transactionMap[key] = existingInMap.copy(
+//                    imageUri = mappedLocalTx.imageUri ?: existingInMap.imageUri,
+//                    imageUrl = mappedLocalTx.imageUrl ?: existingInMap.imageUrl, // Prioritaskan yang lebih baru/ada
+//                    type = mappedLocalTx.type, // Ambil dari lokal karena mungkin nama dompet di lokal lebih update jika belum sync
+//                    amount = mappedLocalTx.amount,
+//                    category = mappedLocalTx.category,
+//                    note = mappedLocalTx.note,
+//                    date = mappedLocalTx.date,
+//                    walletId = mappedLocalTx.walletId
+//                )
+//            } else {
+//                transactionMap[key] = mappedLocalTx
+//            }
+//        }
+//
+//        transactionMap.values.sortedByDescending { it.date }
+//    }.catch { e ->
+//        Log.e("RiwayatViewModel", "Combine operator error: $e", e)
+//        emit(emptyList<Transaction>())
+//    }.stateIn(
+//        scope = viewModelScope,
+//        started = SharingStarted.WhileSubscribed(5000),
+//        initialValue = emptyList<Transaction>()
+//    )
 
     private suspend fun syncLocalTransactions() {
         // Gunakan Mutex untuk memastikan hanya satu sinkronisasi berjalan pada satu waktu
@@ -337,37 +344,41 @@ class RiwayatViewModel @Inject constructor(
         }
     }
 
-    suspend fun deleteTransaction(id: String): Result<Unit> {
-        return try {
-            if (id.startsWith("local_")) {
-                val localId = id.removePrefix("local_").toLongOrNull()
-                if (localId != null) {
-                    val txToDelete = localTransactionDao.getTransactionByLocalId(localId)
-                    txToDelete?.imageUri?.let { File(it).delete() }
-                    localTransactionDao.deleteById(localId)
-                    Log.d("RiwayatViewModel", "Menghapus transaksi hanya-lokal dengan ID lokal: $localId")
-                } else {
-                    Log.w("RiwayatViewModel", "Format ID transaksi lokal tidak valid untuk penghapusan: $id")
-                    return Result.failure(IllegalArgumentException("Format ID transaksi lokal tidak valid"))
-                }
-            } else { // Ini berarti id adalah Firestore ID
-                db.collection("transactions")
-                    .document(id)
-                    .delete()
-                    .await()
-                Log.d("RiwayatViewModel", "Menghapus transaksi Firestore dengan ID: $id")
 
-                val localTransaction = localTransactionDao.getByFirestoreId(id)
-                if (localTransaction != null) {
-                    localTransaction.imageUri?.let { File(it).delete() }
-                    localTransactionDao.deleteById(localTransaction.id)
-                    Log.d("RiwayatViewModel", "Menghapus transaksi lokal yang sesuai dengan ID lokal: ${localTransaction.id} (Firestore ID: $id)")
-                }
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Log.e("RiwayatViewModel", "Gagal menghapus transaksi ID: $id, $e")
-            Result.failure(e)
-        }
+    suspend fun deleteTransaction(id: String): Result<Unit> {
+        return appRepository.deleteTransaction(id) // Asumsi fungsi ini ada di AppRepository
     }
+//    suspend fun deleteTransaction(id: String): Result<Unit> {
+//        return try {
+//            if (id.startsWith("local_")) {
+//                val localId = id.removePrefix("local_").toLongOrNull()
+//                if (localId != null) {
+//                    val txToDelete = localTransactionDao.getTransactionByLocalId(localId)
+//                    txToDelete?.imageUri?.let { File(it).delete() }
+//                    localTransactionDao.deleteById(localId)
+//                    Log.d("RiwayatViewModel", "Menghapus transaksi hanya-lokal dengan ID lokal: $localId")
+//                } else {
+//                    Log.w("RiwayatViewModel", "Format ID transaksi lokal tidak valid untuk penghapusan: $id")
+//                    return Result.failure(IllegalArgumentException("Format ID transaksi lokal tidak valid"))
+//                }
+//            } else { // Ini berarti id adalah Firestore ID
+//                db.collection("transactions")
+//                    .document(id)
+//                    .delete()
+//                    .await()
+//                Log.d("RiwayatViewModel", "Menghapus transaksi Firestore dengan ID: $id")
+//
+//                val localTransaction = localTransactionDao.getByFirestoreId(id)
+//                if (localTransaction != null) {
+//                    localTransaction.imageUri?.let { File(it).delete() }
+//                    localTransactionDao.deleteById(localTransaction.id)
+//                    Log.d("RiwayatViewModel", "Menghapus transaksi lokal yang sesuai dengan ID lokal: ${localTransaction.id} (Firestore ID: $id)")
+//                }
+//            }
+//            Result.success(Unit)
+//        } catch (e: Exception) {
+//            Log.e("RiwayatViewModel", "Gagal menghapus transaksi ID: $id, $e")
+//            Result.failure(e)
+//        }
+//    }
 }

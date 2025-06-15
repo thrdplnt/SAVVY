@@ -11,14 +11,20 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+// Data class baru untuk UI, menggabungkan dompet dengan saldonya yang sudah dihitung
+data class WalletUiItem(
+    val wallet: Wallet,
+    val balance: Long
+)
+
 data class WalletUiState(
-    val wallets: List<Wallet> = emptyList(),
-    val isLoading: Boolean = false,
+    val walletItems: List<WalletUiItem> = emptyList(), // Mengganti List<Wallet>
+    val isLoading: Boolean = true, // Mulai dengan loading
     val errorMessage: String? = null,
     val successMessage: String? = null,
-    val showDialog: Boolean = false, // Untuk mengontrol visibilitas dialog tambah/edit
-    val walletToEdit: Wallet? = null, // Dompet yang sedang diedit, null jika mode tambah
-    val newWalletName: String = "" // Nama dompet untuk form di dialog
+    val showDialog: Boolean = false,
+    val walletToEdit: Wallet? = null,
+    val newWalletName: String = ""
 )
 
 @HiltViewModel
@@ -33,31 +39,48 @@ class WalletViewModel @Inject constructor(
         get() = FirebaseAuth.getInstance().currentUser?.uid
 
     init {
-        loadWallets()
+        loadWalletsWithBalance()
     }
 
-    private fun loadWallets() {
-        userId?.let { currentUid ->
+    private fun loadWalletsWithBalance() {
+        userId?.let {
             viewModelScope.launch {
-                appRepository.wallets // Ini adalah Flow<List<Wallet>> dari AppRepository
-                    .onStart {
-                        Log.d("WalletViewModel", "Mulai mengambil daftar dompet...")
-                        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+                // Gabungkan flow wallets dan transactions untuk perhitungan
+                appRepository.wallets.combine(appRepository.transactions) { wallets, transactions ->
+                    Log.d("WalletViewModel", "Combining data. Wallets: ${wallets.size}, Transactions: ${transactions.size}")
+
+                    // Lakukan perhitungan saldo untuk setiap dompet
+                    wallets.map { wallet ->
+                        val balance = transactions
+                            .filter { trx ->
+                                // Logika untuk mencocokkan transaksi dengan dompet (termasuk data lama)
+                                trx.walletId == wallet.id || (trx.walletId.isNullOrBlank() && trx.type.equals(wallet.name, ignoreCase = true))
+                            }
+                            .sumOf { trx ->
+                                if (trx.category == "Pemasukan") trx.amount else -trx.amount
+                            }
+                        WalletUiItem(wallet = wallet, balance = balance)
                     }
+                }
+                    .onStart { _uiState.update { it.copy(isLoading = true) } }
                     .catch { e ->
-                        Log.e("WalletViewModel", "Error mengambil daftar dompet: $e")
-                        _uiState.update { it.copy(isLoading = false, errorMessage = "Gagal memuat dompet: ${e.message}") }
+                        Log.e("WalletViewModel", "Error combining flows: $e")
+                        _uiState.update { it.copy(isLoading = false, errorMessage = "Gagal memuat data dompet.") }
                     }
-                    .collect { walletList ->
-                        Log.d("WalletViewModel", "Daftar dompet diterima: ${walletList.size} item")
-                        _uiState.update { it.copy(isLoading = false, wallets = walletList) }
+                    .collect { calculatedWalletItems ->
+                        _uiState.update { currentState ->
+                            // PERBAIKAN: Listener ini hanya bertanggung jawab untuk memperbarui data
+                            // dan status loading awal, tidak mengganggu state dialog.
+                            currentState.copy(
+                                isLoading = if(currentState.isLoading) false else currentState.isLoading, // Hanya set false sekali saat awal
+                                walletItems = calculatedWalletItems.sortedBy { item -> item.wallet.name }
+                            )
+                        }
                     }
             }
-        } ?: run {
-            Log.w("WalletViewModel", "Tidak bisa memuat dompet: pengguna tidak login.")
-            _uiState.update { it.copy(isLoading = false, errorMessage = "Pengguna tidak login.") }
-        }
+        } ?: _uiState.update { it.copy(isLoading = false, errorMessage = "Pengguna tidak login.") }
     }
+
 
     fun onDialogDismiss() {
         _uiState.update { it.copy(showDialog = false, walletToEdit = null, newWalletName = "", errorMessage = null, successMessage = null) }
@@ -67,8 +90,8 @@ class WalletViewModel @Inject constructor(
         _uiState.update { it.copy(showDialog = true, walletToEdit = null, newWalletName = "") }
     }
 
-    fun onOpenEditDialog(wallet: Wallet) {
-        _uiState.update { it.copy(showDialog = true, walletToEdit = wallet, newWalletName = wallet.name) }
+    fun onOpenEditDialog(walletUiItem: WalletUiItem) {
+        _uiState.update { it.copy(showDialog = true, walletToEdit = walletUiItem.wallet, newWalletName = walletUiItem.wallet.name) }
     }
 
     fun onWalletNameChange(name: String) {
@@ -81,52 +104,52 @@ class WalletViewModel @Inject constructor(
 
     fun saveWallet() {
         val currentUserId = userId
-        val nameToSave = uiState.value.newWalletName.trim() // Hilangkan spasi di awal/akhir
+        val nameToSave = uiState.value.newWalletName.trim()
         val editingWallet = uiState.value.walletToEdit
 
-        if (currentUserId == null) {
-            _uiState.update { it.copy(errorMessage = "Sesi berakhir, harap login ulang.", isLoading = false) }
-            return
-        }
-        if (nameToSave.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Nama dompet tidak boleh kosong.", isLoading = false) }
-            return
-        }
-        // Cek duplikasi nama (kecuali jika mengedit dan namanya tidak berubah dari nama aslinya)
-        if (uiState.value.wallets.any { it.name.equals(nameToSave, ignoreCase = true) && it.id != editingWallet?.id }) {
-            _uiState.update { it.copy(errorMessage = "Nama dompet '$nameToSave' sudah ada.", isLoading = false) }
-            return
+        if (currentUserId == null) { _uiState.update { it.copy(errorMessage = "Sesi berakhir.") }; return }
+        if (nameToSave.isBlank()) { _uiState.update { it.copy(errorMessage = "Nama dompet tidak boleh kosong.") }; return }
+        if (uiState.value.walletItems.any { it.wallet.name.equals(nameToSave, ignoreCase = true) && it.wallet.id != editingWallet?.id }) {
+            _uiState.update { it.copy(errorMessage = "Nama dompet '$nameToSave' sudah ada.") }; return
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            val result: Result<Unit> = if (editingWallet == null) { // Mode Tambah
+            // Tampilkan loading yang spesifik untuk aksi ini
+            _uiState.update { it.copy(isLoading = true) }
+
+            val result: Result<Unit> = if (editingWallet == null) {
                 appRepository.addWallet(nameToSave, currentUserId)
-            } else { // Mode Edit
-                if (editingWallet.name.equals(nameToSave, ignoreCase = true)) { // Nama tidak berubah
-                    _uiState.update { it.copy(isLoading = false, showDialog = false, successMessage = "Tidak ada perubahan pada nama dompet.") }
+            } else {
+                if (editingWallet.name.equals(nameToSave, ignoreCase = true)) {
+                    _uiState.update { it.copy(isLoading = false, showDialog = false) } // Langsung tutup jika tidak ada perubahan
                     return@launch
                 }
                 appRepository.updateWalletName(editingWallet.id, nameToSave, currentUserId)
             }
 
+            // --- PERBAIKAN UTAMA ---
+            // Blok ini sekarang menjadi satu-satunya yang bertanggung jawab untuk
+            // mengubah state setelah operasi simpan selesai.
             result.fold(
                 onSuccess = {
+                    val successMsg = if (editingWallet == null) "Dompet '$nameToSave' berhasil ditambahkan." else "Dompet berhasil diubah."
+                    // Update semua state yang relevan dalam satu panggilan update
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            showDialog = false, // Tutup dialog setelah sukses
-                            successMessage = if (editingWallet == null) "Dompet '$nameToSave' berhasil ditambahkan." else "Dompet berhasil diubah menjadi '$nameToSave'."
+                            showDialog = false, // <-- Menutup dialog secara eksplisit
+                            successMessage = successMsg,
+                            walletToEdit = null, // Reset form
+                            newWalletName = ""
                         )
                     }
-                    // loadWallets() // Muat ulang daftar dompet (Flow seharusnya otomatis update dari AppRepository)
                 },
                 onFailure = { e ->
+                    // Jika gagal, hentikan loading dan tampilkan pesan error, dialog tetap terbuka
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            // showDialog tetap true agar user bisa koreksi atau lihat error
-                            errorMessage = e.message ?: "Terjadi kesalahan saat menyimpan dompet."
+                            errorMessage = e.message ?: "Gagal menyimpan dompet."
                         )
                     }
                 }
@@ -134,14 +157,11 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    fun deleteWallet(wallet: Wallet) { // Menerima objek Wallet agar bisa cek nama
-        val currentUserId = userId
-        if (currentUserId == null) {
-            _uiState.update { it.copy(errorMessage = "Sesi berakhir, harap login ulang.") }
-            return
-        }
+    fun deleteWallet(walletUiItem: WalletUiItem) {
+        val currentUserId = userId ?: return
+        val wallet = walletUiItem.wallet
 
-        // Cek apakah dompet default
+        // Logika pengecekan dipusatkan di ViewModel
         val defaultWallets = listOf("Tunai", "Tabungan", "Non-Tunai")
         if (defaultWallets.any { it.equals(wallet.name, ignoreCase = true) }) {
             _uiState.update { it.copy(errorMessage = "Dompet default ('${wallet.name}') tidak bisa dihapus.") }
@@ -149,8 +169,7 @@ class WalletViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            // Cek dulu apakah ada transaksi terkait
+            _uiState.update { it.copy(isLoading = true) }
             val hasTransactions = appRepository.hasTransactionsForWallet(wallet.id, currentUserId)
             if (hasTransactions) {
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Dompet '${wallet.name}' tidak bisa dihapus karena masih memiliki transaksi.") }
