@@ -31,15 +31,19 @@ import com.example.savvy.ui.theme.White
 import com.google.firebase.auth.FirebaseAuth
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import java.io.File
 
 @Composable
 fun ProfileScreen(
     navController: NavController,
-    viewModel: AuthViewModel = hiltViewModel()
+    viewModel: AuthViewModel = hiltViewModel(),
+    profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
     var hasLoggedOut by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
     val user = FirebaseAuth.getInstance().currentUser
+
+    val userProfile by profileViewModel.userProfile.collectAsState(initial = null)
 
     Column(
         modifier = Modifier
@@ -57,26 +61,18 @@ fun ProfileScreen(
                 .clip(CircleShape)
                 .background(Navy.copy(alpha = 0.1f))
         ) {
-            if (user?.photoUrl != null) {
-                AsyncImage(
-                    model = user.photoUrl.toString(),
-                    contentDescription = "Foto Profil",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop, // Zoom untuk mengisi lingkaran
-                    placeholder = painterResource(id = R.drawable.ic_launcher_foreground)
-                )
-            } else {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                    contentDescription = "Foto Profil",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop // Zoom untuk mengisi lingkaran
-                )
-            }
+            // Tampilkan gambar dengan prioritas: path lokal > url online > placeholder
+            val imageToShow: Any? = userProfile?.localPhotoPath?.let { File(it) }
+                ?: userProfile?.photoUrl
+                ?: R.drawable.ic_launcher_foreground
+
+            AsyncImage(
+                model = imageToShow,
+                contentDescription = "Foto Profil",
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                placeholder = painterResource(id = R.drawable.ic_launcher_foreground)
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))

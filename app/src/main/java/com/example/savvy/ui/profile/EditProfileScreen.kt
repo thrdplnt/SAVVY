@@ -5,22 +5,29 @@ import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Camera
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -29,47 +36,45 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.savvy.R
-import com.example.savvy.data.Screen
 import com.example.savvy.ui.components.SavvyButton
 import com.example.savvy.ui.components.SavvyTextField
 import com.example.savvy.ui.theme.Beige
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.White
-import com.google.firebase.auth.FirebaseAuth
 import java.io.File
-import androidx.compose.ui.layout.ContentScale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditProfileScreen(
     navController: NavController,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
-    val user = FirebaseAuth.getInstance().currentUser
     val profileState by viewModel.profileState.collectAsState()
+    val userProfileFromDb by viewModel.userProfile.collectAsState(initial = null)
+
     val context = LocalContext.current
 
-    var name by remember { mutableStateOf(user?.displayName ?: "") }
-    var profileImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var photoUrl by remember { mutableStateOf(user?.photoUrl?.toString()) }
-    var showPhotoOptionsDialog by remember { mutableStateOf(false) }
+    var name by remember(userProfileFromDb) { mutableStateOf(userProfileFromDb?.displayName ?: "") }
+    var newImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var isPhotoRemoved by remember { mutableStateOf(false) }
+    var showPhotoOptionsDialog by remember { mutableStateOf(false) }
 
     val pickImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            profileImageUri = it
-            photoUrl = null
+            newImageUri = it
             isPhotoRemoved = false
         }
     }
 
+    val tempCameraUri = remember { mutableStateOf<android.net.Uri?>(null) }
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            profileImageUri?.let {
-                photoUrl = null
+            tempCameraUri.value?.let {
+                newImageUri = it
                 isPhotoRemoved = false
             }
         }
@@ -79,281 +84,151 @@ fun EditProfileScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            val photoFile = File(context.cacheDir, "temp_camera_image.jpg")
-            val photoUri = FileProvider.getUriForFile(
-                context,
-                "com.example.savvy.fileprovider",
-                photoFile
-            )
-            profileImageUri = photoUri
-
-            context.grantUriPermission(
-                "com.android.camera",
-                photoUri,
-                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-
+            val photoFile = File(context.cacheDir, "savvy_cam_${System.currentTimeMillis()}.jpg")
+            val photoUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
+            tempCameraUri.value = photoUri
             takePictureLauncher.launch(photoUri)
         } else {
             Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto", Toast.LENGTH_SHORT).show()
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Beige)
-    ) {
-        IconButton(
-            onClick = { navController.popBackStack() },
-            modifier = Modifier
-                .absoluteOffset(x = 16.dp, y = 42.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Kembali",
-                tint = Navy
+    Scaffold(
+        containerColor = Beige,
+        topBar = {
+            TopAppBar(
+                title = { Text("Edit Profil", style = MaterialTheme.typography.headlineSmall, color = Navy, fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = Navy)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         }
-
+    ) { paddingValues ->
         Column(
             modifier = Modifier
+                .padding(paddingValues)
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Foto Profil
             Box(
                 modifier = Modifier
                     .size(120.dp)
-                    .clip(CircleShape)
-                    .background(Navy.copy(alpha = 0.1f))
                     .clickable { showPhotoOptionsDialog = true }
             ) {
-                if (profileImageUri != null) {
-                    AsyncImage(
-                        model = profileImageUri,
-                        contentDescription = "Foto Profil",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop // Zoom untuk mengisi lingkaran
-                    )
-                } else if (photoUrl != null && !isPhotoRemoved) {
-                    AsyncImage(
-                        model = photoUrl,
-                        contentDescription = "Foto Profil",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop, // Zoom untuk mengisi lingkaran
-                        placeholder = painterResource(id = R.drawable.ic_launcher_foreground)
-                    )
+                val imageToShow: Any? = if (isPhotoRemoved) {
+                    R.drawable.ic_launcher_foreground
                 } else {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                        contentDescription = "Foto Profil",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop // Zoom untuk mengisi lingkaran
-                    )
+                    newImageUri ?: userProfileFromDb?.localPhotoPath?.let { File(it) } ?: userProfileFromDb?.photoUrl ?: R.drawable.ic_launcher_foreground
                 }
 
-                // Icon Kamera (setengah di dalam lingkaran)
+                AsyncImage(
+                    model = imageToShow,
+                    contentDescription = "Foto Profil",
+                    modifier = Modifier.fillMaxSize().clip(CircleShape).background(Navy.copy(alpha = 0.1f)),
+                    contentScale = ContentScale.Crop,
+                    placeholder = painterResource(id = R.drawable.ic_launcher_foreground)
+                )
+
                 Icon(
-                    imageVector = Icons.Default.Camera,
+                    imageVector = Icons.Default.CameraAlt,
                     contentDescription = "Ganti Foto",
                     tint = Navy,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .size(32.dp)
-                        .offset(x = (-8).dp, y = (-8).dp) // Geser agar setengah icon di dalam lingkaran
+                        .size(36.dp)
                         .background(White, shape = CircleShape)
-                        .padding(4.dp)
+                        .border(BorderStroke(1.dp, Beige), CircleShape)
+                        .padding(6.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Edit Profil",
-                style = MaterialTheme.typography.headlineLarge,
-                color = Navy,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .widthIn(max = 411.dp)
-                    .fillMaxWidth(0.77f)
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(48.dp))
 
             Column(
                 modifier = Modifier
                     .widthIn(max = 500.dp)
-                    .fillMaxWidth(0.89f)
-                    .background(White, shape = RoundedCornerShape(8.dp))
+                    .fillMaxWidth()
+                    .background(White, shape = RoundedCornerShape(12.dp))
                     .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                SavvyTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = "Nama Lengkap"
-                )
+                SavvyTextField(value = name, onValueChange = { name = it }, label = "Nama Lengkap")
+                SavvyTextField(value = userProfileFromDb?.email ?: "", onValueChange = { /* Tidak bisa diedit */ }, label = "Email", enabled = false)
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                SavvyTextField(
-                    value = user?.email ?: "user@example.com",
-                    onValueChange = { /* Tidak bisa diedit */ },
-                    label = "Email",
-                    enabled = false
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 profileState.errorMessage?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        textAlign = TextAlign.Center
-                    )
+                    Text(text = it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 8.dp))
                 }
 
-                SavvyButton(
-                    text = "Simpan Perubahan",
-                    onClick = {
-                        viewModel.updateProfile(name, profileImageUri, isPhotoRemoved)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    textColor = Navy,
-                    backgroundColor = Beige,
-                    enabled = name.isNotBlank() && !profileState.isLoading
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-
-        if (profileState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(
-                    color = Navy,
-                    modifier = Modifier.size(48.dp)
-                )
-            }
-        }
-
-        if (showPhotoOptionsDialog) {
-            AlertDialog(
-                onDismissRequest = { showPhotoOptionsDialog = false },
-                title = {
-                    Text(
-                        "Pilih Opsi Foto",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Navy
+                if (profileState.isLoading) {
+                    CircularProgressIndicator(color = Navy)
+                } else {
+                    SavvyButton(
+                        text = "Simpan Perubahan",
+                        onClick = { viewModel.updateProfile(name, newImageUri, isPhotoRemoved) },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        textColor = Navy,
+                        backgroundColor = Beige,
+                        enabled = !profileState.isLoading
                     )
-                },
-                text = {
-                    Column {
-                        TextButton(
-                            onClick = {
-                                showPhotoOptionsDialog = false
-                                pickImageLauncher.launch("image/*")
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Pilih dari Galeri",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Navy
-                            )
-                        }
-                        TextButton(
-                            onClick = {
-                                showPhotoOptionsDialog = false
-                                if (ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.CAMERA
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                ) {
-                                    val photoFile = File(context.cacheDir, "temp_camera_image.jpg")
-                                    val photoUri = FileProvider.getUriForFile(
-                                        context,
-                                        "com.example.savvy.fileprovider",
-                                        photoFile
-                                    )
-                                    profileImageUri = photoUri
-
-                                    context.grantUriPermission(
-                                        "com.android.camera",
-                                        photoUri,
-                                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                                    )
-
-                                    takePictureLauncher.launch(photoUri)
-                                } else {
-                                    requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Ambil Foto",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Navy
-                            )
-                        }
-                        TextButton(
-                            onClick = {
-                                showPhotoOptionsDialog = false
-                                profileImageUri = null
-                                photoUrl = null
-                                isPhotoRemoved = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Hapus",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { showPhotoOptionsDialog = false }) {
-                        Text(
-                            text = "Batal",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Navy
-                        )
-                    }
-                },
-                containerColor = White
-            )
+                }
+            }
         }
+    }
+
+    if (showPhotoOptionsDialog) {
+        AlertDialog(
+            onDismissRequest = { showPhotoOptionsDialog = false },
+            title = { Text("Opsi Foto Profil", style = MaterialTheme.typography.titleLarge, color = Navy) },
+            text = {
+                Column {
+                    TextButton(
+                        onClick = { showPhotoOptionsDialog = false; pickImageLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Pilih dari Galeri", style = MaterialTheme.typography.bodyLarge, color = Navy) }
+                    TextButton(
+                        onClick = {
+                            showPhotoOptionsDialog = false
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                val photoFile = File(context.cacheDir, "savvy_cam_${System.currentTimeMillis()}.jpg")
+                                val photoUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
+                                tempCameraUri.value = photoUri
+                                takePictureLauncher.launch(photoUri)
+                            } else {
+                                requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Ambil Foto", style = MaterialTheme.typography.bodyLarge, color = Navy) }
+                    TextButton(
+                        onClick = {
+                            showPhotoOptionsDialog = false; newImageUri = null; isPhotoRemoved = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Hapus Foto", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPhotoOptionsDialog = false }) { Text("Batal", style = MaterialTheme.typography.labelLarge, color = Navy) }
+            },
+            containerColor = White,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 
     LaunchedEffect(profileState.isSuccess) {
         if (profileState.isSuccess) {
-            Toast.makeText(context, "Profil berhasil diperbarui", Toast.LENGTH_SHORT).show()
-            navController.popBackStack(Screen.Profile.route, inclusive = false)
+            Toast.makeText(context, "Perubahan disimpan. Sinkronisasi berjalan jika online.", Toast.LENGTH_LONG).show()
+            navController.popBackStack()
         }
     }
 }

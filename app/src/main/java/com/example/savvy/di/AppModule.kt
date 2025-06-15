@@ -2,6 +2,7 @@ package com.example.savvy.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.savvy.data.*
 import com.example.savvy.data.AnggaranDao
 import com.example.savvy.data.AppDatabase
 import com.example.savvy.data.AppRepository
@@ -41,6 +42,11 @@ object AppModule {
     fun provideAnggaranDao(database: AppDatabase): AnggaranDao {
         return database.anggaranDao()
     }
+    @Provides
+    @Singleton
+    fun provideUserDao(database: AppDatabase): UserDao {
+        return database.userDao()
+    }
 
     @Provides
     @Singleton
@@ -52,8 +58,9 @@ object AppModule {
     @Singleton
     fun provideAppRepository(
         localTransactionDao: LocalTransactionDao,
-        anggaranDao: AnggaranDao // <-- Inject AnggaranDao
+        anggaranDao: AnggaranDao,
+        userDao: UserDao
     ): AppRepository {
-        return AppRepository(localTransactionDao, anggaranDao) // <-- Pass AnggaranDao
+        return AppRepository(localTransactionDao, anggaranDao, userDao) // <-- Pass AnggaranDao
     }
 }

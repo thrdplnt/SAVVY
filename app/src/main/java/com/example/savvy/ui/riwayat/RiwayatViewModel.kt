@@ -65,7 +65,7 @@ class RiwayatViewModel @Inject constructor(
         monitorNetworkStatus()
         viewModelScope.launch {
             Log.d("RiwayatViewModel", "Calling onUserLogin from init")
-            appRepository.onUserLogin()
+            appRepository.onUserLogin(uploader)
         }
     }
 

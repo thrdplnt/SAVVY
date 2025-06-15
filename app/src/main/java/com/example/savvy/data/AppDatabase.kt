@@ -9,11 +9,12 @@ import androidx.room.TypeConverters
 import com.example.savvy.data.converters.DateConverter
 
 // Tambahkan LocalAnggaran ke entities dan naikkan versi database
-@Database(entities = [LocalTransaction::class, LocalAnggaran::class], version = 5) // VERSI NAIK KE 5
+@Database(entities = [LocalTransaction::class, LocalAnggaran::class, LocalUser::class], version = 6) // VERSI NAIK KE 5
 @TypeConverters(DateConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun localTransactionDao(): LocalTransactionDao
-    abstract fun anggaranDao(): AnggaranDao // Tambahkan DAO untuk Anggaran
+    abstract fun anggaranDao(): AnggaranDao
+    abstract fun userDao(): UserDao
 
     companion object {
         @Volatile
@@ -26,13 +27,9 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "savvy_database"
                 )
-                    // Karena versi database naik, Anda perlu strategi migrasi.
-                    // fallbackToDestructiveMigration akan menghapus data lama dan membuat skema baru.
-                    // Untuk produksi, Anda harus menyediakan objek Migration.
+
                     .fallbackToDestructiveMigration()
                     .build()
-                // Log versi database yang diinisialisasi
-                Log.d("AppDatabase", "Database initialized with version 5")
                 INSTANCE = instance
                 instance
             }

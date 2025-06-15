@@ -4,6 +4,7 @@ import android.util.Log // Tambahkan Log jika belum ada
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.savvy.data.AppRepository // IMPORT AppRepository
+import com.example.savvy.data.SupabaseStorageUploader
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
 import dagger.hilt.android.lifecycle.HiltViewModel // IMPORT HiltViewModel
@@ -24,6 +25,7 @@ data class AuthState(
 
 @HiltViewModel // Anotasi HiltViewModel
 class AuthViewModel @Inject constructor( // Inject AppRepository
+    private val uploader: SupabaseStorageUploader,
     private val appRepository: AppRepository
 ) : ViewModel() {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -64,9 +66,8 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                             user.uid.let { userId ->
                                 viewModelScope.launch {
                                     Log.d("AuthViewModel", "Registrasi berhasil, membuat dompet default untuk: $userId")
-
                                     appRepository.updateUserSession(userId) // Update sesi di repo
-                                    appRepository.onUserLogin()
+                                    appRepository.onUserLogin(uploader)
                                     appRepository.createDefaultWalletsIfNotExist(userId) // BUAT DOMPET DEFAULT
 
                                 }
@@ -78,7 +79,7 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                             // Tetap anggap sukses registrasi, tapi mungkin beri pesan tambahan
                             user.uid.let { userId -> // Tetap buat dompet default
                                 viewModelScope.launch {
-                                    appRepository.onUserLogin()
+                                    appRepository.onUserLogin(uploader)
                                     appRepository.createDefaultWalletsIfNotExist(userId)
                                 }
                             }
@@ -111,7 +112,7 @@ class AuthViewModel @Inject constructor( // Inject AppRepository
                             Log.d("AuthViewModel", "Login berhasil, memastikan dompet default ada untuk: $userId")
                             appRepository.updateUserSession(userId) // Update sesi di repo
                             appRepository.createDefaultWalletsIfNotExist(userId) // PASTIKAN DOMPET DEFAULT ADA
-                            appRepository.onUserLogin() // Panggil juga onUserLogin dari AppRepository untuk sinkronisasi data lain
+                                appRepository.onUserLogin(uploader) // Panggil juga onUserLogin dari AppRepository untuk sinkronisasi data lain
                         }
                     }
                     _authState.update { it.copy(isLoading = false, isSuccess = true) }

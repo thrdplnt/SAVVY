@@ -1,7 +1,10 @@
 package com.example.savvy.data
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.ktx.toObject
@@ -12,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -25,13 +29,104 @@ import javax.inject.Singleton
 @Singleton
 class AppRepository @Inject constructor(
     private val localTransactionDao: LocalTransactionDao,
-    private val anggaranDao: AnggaranDao
+    private val anggaranDao: AnggaranDao,
+    private val userDao: UserDao
 ) {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
 
     // State Flow untuk menyimpan userId saat ini, menjadi pemicu utama
     private val _currentUserId = MutableStateFlow<String?>(auth.currentUser?.uid)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val userProfile: Flow<LocalUser?> = _currentUserId.flatMapLatest { userId ->
+        if (userId == null) {
+            flowOf(null)
+        } else {
+            userDao.getUser(userId)
+        }
+    }
+
+    // --- Fungsi Baru: Menyimpan perubahan profil ke Room terlebih dahulu ---
+    suspend fun updateLocalProfile(
+        name: String,
+        newImageUri: Uri?,
+        isPhotoRemoved: Boolean,
+        context: Context
+    ) {
+        val user = auth.currentUser ?: return
+        var newLocalPath: String? = null
+        val finalName = name.trim()
+
+        val currentUserProfile = userDao.getUser(user.uid).firstOrNull() ?: LocalUser(
+            uid = user.uid,
+            displayName = user.displayName,
+            email = user.email,
+            photoUrl = user.photoUrl?.toString()
+        )
+
+        if (isPhotoRemoved) {
+            newLocalPath = null // Menandakan foto dihapus
+        } else if (newImageUri != null) {
+            // Salin gambar baru ke penyimpanan internal aplikasi
+            val imageDir = File(context.filesDir, "profile_images")
+            if (!imageDir.exists()) imageDir.mkdirs()
+            val file = File(imageDir, "profile_${user.uid}.jpg")
+            context.contentResolver.openInputStream(newImageUri)?.use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+            }
+            newLocalPath = file.absolutePath
+        } else {
+            // Jika tidak ada gambar baru dan tidak dihapus, pertahankan path lokal yang sudah ada
+            newLocalPath = currentUserProfile.localPhotoPath
+        }
+
+        // Simpan perubahan ke Room dan tandai sebagai BELUM SINKRON
+        userDao.insertOrUpdateUser(currentUserProfile.copy(
+            displayName = finalName,
+            localPhotoPath = newLocalPath,
+            isSynced = false // PENTING: Tandai untuk disinkronkan nanti
+        ))
+    }
+
+
+    // --- FUNGSI BARU: Menyinkronkan profil ke Firebase/Supabase ---
+    suspend fun syncUserProfile(uploader: SupabaseStorageUploader) {
+        val unsyncedUser = userDao.getUnsyncedUser() ?: return
+        Log.d("AppRepository", "Syncing user profile for ${unsyncedUser.uid}")
+
+        var finalPhotoUrl = unsyncedUser.photoUrl
+
+        // Periksa apakah ada path lokal yang perlu diunggah
+        if (unsyncedUser.localPhotoPath != null) {
+            val file = File(unsyncedUser.localPhotoPath)
+            if (file.exists()) {
+                val destinationFileName = "profile_images/${unsyncedUser.uid}.jpg"
+                finalPhotoUrl = uploader.uploadImage(file, destinationFileName)
+            }
+        } else {
+            // Jika path lokal null, berarti user ingin menghapus foto
+            finalPhotoUrl = null
+        }
+
+        val profileUpdates = UserProfileChangeRequest.Builder()
+            .setDisplayName(unsyncedUser.displayName)
+            .setPhotoUri(finalPhotoUrl?.let { Uri.parse(it) })
+            .build()
+
+        try {
+            auth.currentUser?.updateProfile(profileUpdates)?.await()
+            // Setelah sukses, update kembali Room dengan URL baru dan tandai sudah sinkron
+            userDao.insertOrUpdateUser(unsyncedUser.copy(
+                photoUrl = finalPhotoUrl,
+                isSynced = true
+                // JANGAN hapus localPhotoPath, biarkan untuk cache offline
+            ))
+            Log.d("AppRepository", "User profile synced successfully.")
+        } catch (e: Exception) {
+            Log.e("AppRepository", "Failed to sync user profile: $e", e)
+        }
+    }
 
     // --- PERBAIKAN: Semua Flow data sekarang reaktif terhadap perubahan _currentUserId ---
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -126,10 +221,37 @@ class AppRepository @Inject constructor(
         }
     }
 
-    suspend fun onUserLogin() {
+    // --- Modifikasi onUserLogin ---
+    suspend fun onUserLogin(uploader: SupabaseStorageUploader) {
         val user = auth.currentUser ?: return
+        startListeners(user.uid)
         createDefaultWalletsIfNotExist(user.uid)
         syncAllDataFromServer()
+
+        // Sinkronkan juga profil pengguna dari Firebase Auth ke Room saat login
+        val localUser = userDao.getUser(user.uid).firstOrNull()
+        // PERBAIKAN: Hanya update jika ada perubahan ATAU jika data lokal tidak ada sama sekali.
+        // Dan yang terpenting, JANGAN HAPUS localPhotoPath yang sudah ada.
+        if (localUser == null) {
+            userDao.insertOrUpdateUser(
+                LocalUser(
+                    uid = user.uid,
+                    displayName = user.displayName,
+                    email = user.email,
+                    photoUrl = user.photoUrl?.toString(),
+                    isSynced = true
+                )
+            )
+        } else if(localUser.displayName != user.displayName || localUser.photoUrl != user.photoUrl?.toString()){
+            userDao.insertOrUpdateUser(
+                localUser.copy( // Gunakan .copy() untuk mempertahankan localPhotoPath
+                    displayName = user.displayName,
+                    photoUrl = user.photoUrl?.toString(),
+                    isSynced = true
+                )
+            )
+        }
+        syncUserProfile(uploader) // Cek jika ada profil yg belum sinkron dari sesi offline sebelumnya
     }
 
     private suspend fun syncAllDataFromServer() {
@@ -168,10 +290,24 @@ class AppRepository @Inject constructor(
     }
 
     suspend fun createDefaultWalletsIfNotExist(userId: String) {
-        val defaultWalletNames = listOf("Tunai", "Tabungan", "Non-Tunai"); val walletsCollection = db.collection("users").document(userId).collection("wallets")
+        val defaultWalletNames = listOf("Tunai", "Tabungan", "Non-Tunai")
+        val walletsCollection = db.collection("users").document(userId).collection("wallets")
         try {
             val existingWalletsSnapshot = walletsCollection.get().await()
-            if (existingWalletsSnapshot.isEmpty) { defaultWalletNames.forEach { name -> walletsCollection.add(Wallet(userId = userId, name = name, balance = 0L)).await() }
+            val existingWalletNames = existingWalletsSnapshot.documents.mapNotNull { it.getString("name") }
+
+            // Cek setiap dompet default satu per satu
+            defaultWalletNames.forEach { defaultName ->
+                // Jika nama dompet default BELUM ADA di daftar yang sudah ada
+                if (!existingWalletNames.any { it.equals(defaultName, ignoreCase = true) }) {
+                    val wallet = Wallet(userId = userId, name = defaultName, balance = 0L)
+                    try {
+                        walletsCollection.add(wallet).await()
+                        Log.d("AppRepository", "Added missing default wallet '$defaultName' for user $userId")
+                    } catch (e: Exception) {
+                        Log.e("AppRepository", "Error creating default wallet '$defaultName': $e")
+                    }
+                }
             }
         } catch (e: Exception) { Log.e("AppRepository", "Error checking/creating default wallets: $e") }
     }
