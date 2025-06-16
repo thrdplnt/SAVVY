@@ -1,15 +1,17 @@
 package com.example.savvy.ui.anggaran
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.savvy.data.* // Import LocalAnggaran, AppRepository, LocalTransactionDao, Transaction
+import com.example.savvy.data.AppRepository
+import com.example.savvy.data.LocalAnggaran
+import com.example.savvy.data.LocalTransactionDao
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Date
+import java.util.*
 import javax.inject.Inject
-import android.util.Log
 
 data class AnggaranUiItem(
     val localAnggaran: LocalAnggaran,
@@ -70,40 +72,71 @@ class AnggaranViewModel @Inject constructor(
         }
     }
 
-    fun addAnggaran(
+    suspend fun addAnggaran(
         name: String,
         category: String,
         amount: Long,
         startDate: Date,
         endDate: Date
-    ) {
-        viewModelScope.launch {
-            if (userId.isNotEmpty()) {
-                val newAnggaran = LocalAnggaran(
-                    userId = userId,
-                    name = name,
-                    category = category,
-                    amount = amount,
-                    startDate = startDate,
-                    endDate = endDate
-                )
-                repository.insertAnggaran(newAnggaran)
-                // Refresh data tidak diperlukan secara eksplisit jika Flow dari repository sudah reaktif
-            }
+    ): Boolean {
+        if (userId.isEmpty()) return false
+
+        val hasOverlap = _anggaranUiItems.value.any { item ->
+            val existingAnggaran = item.localAnggaran
+            existingAnggaran.category == category &&
+                    startDate.time <= existingAnggaran.endDate.time &&
+                    endDate.time >= existingAnggaran.startDate.time
         }
+
+        if (hasOverlap) {
+            Log.w("AnggaranViewModel", "Overlap detected for category: $category")
+            return false
+        }
+
+        val newAnggaran = LocalAnggaran(
+            userId = userId,
+            name = name,
+            category = category,
+            amount = amount,
+            startDate = startDate,
+            endDate = endDate
+        )
+        repository.insertAnggaran(newAnggaran)
+        return true
     }
 
-    fun updateAnggaran(anggaranUiItem: AnggaranUiItem, newAmount: Long, newStartDate: Date, newEndDate: Date, newName: String) {
-        viewModelScope.launch {
-            val updatedLocalAnggaran = anggaranUiItem.localAnggaran.copy(
-                amount = newAmount,
-                startDate = newStartDate,
-                endDate = newEndDate,
-                name = newName
-            )
-            repository.updateAnggaran(updatedLocalAnggaran)
+    suspend fun updateAnggaran(
+        anggaranUiItem: AnggaranUiItem,
+        newAmount: Long,
+        newStartDate: Date,
+        newEndDate: Date,
+        newName: String
+    ): Boolean {
+        val hasOverlap = _anggaranUiItems.value.any { item ->
+            if (item.localAnggaran.clientGeneratedId == anggaranUiItem.localAnggaran.clientGeneratedId) {
+                return@any false
+            }
+            val existingAnggaran = item.localAnggaran
+            existingAnggaran.category == anggaranUiItem.localAnggaran.category &&
+                    newStartDate.time <= existingAnggaran.endDate.time &&
+                    newEndDate.time >= existingAnggaran.startDate.time
         }
+
+        if (hasOverlap) {
+            Log.w("AnggaranViewModel", "Overlap detected while updating for category: ${anggaranUiItem.localAnggaran.category}")
+            return false
+        }
+
+        val updatedLocalAnggaran = anggaranUiItem.localAnggaran.copy(
+            amount = newAmount,
+            startDate = newStartDate,
+            endDate = newEndDate,
+            name = newName
+        )
+        repository.updateAnggaran(updatedLocalAnggaran)
+        return true
     }
+
 
     fun deleteAnggaran(anggaranUiItem: AnggaranUiItem) {
         viewModelScope.launch {

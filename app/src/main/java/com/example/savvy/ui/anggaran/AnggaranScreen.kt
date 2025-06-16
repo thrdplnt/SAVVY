@@ -35,6 +35,7 @@ import com.example.savvy.ui.components.SavvyTextField
 import com.example.savvy.ui.theme.Navy
 import com.example.savvy.ui.theme.Teal
 import com.example.savvy.ui.theme.White
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -42,7 +43,6 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnggaranScreen(
-    // PERBAIKAN: Mengembalikan parameter navController sesuai permintaan
     navController: NavController,
     viewModel: AnggaranViewModel = hiltViewModel()
 ) {
@@ -50,6 +50,7 @@ fun AnggaranScreen(
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
     var editingAnggaran by remember { mutableStateOf<AnggaranUiItem?>(null) }
+    val scope = rememberCoroutineScope()
 
     var anggaranName by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("") }
@@ -188,12 +189,20 @@ fun AnggaranScreen(
                                 Toast.makeText(context, "Tanggal selesai tidak boleh sebelum tanggal mulai.", Toast.LENGTH_LONG).show()
                                 return@Button
                             }
-                            if (editingAnggaran == null) {
-                                viewModel.addAnggaran(finalName, selectedCategory, finalAmount, startDate, endDate)
-                            } else {
-                                viewModel.updateAnggaran(editingAnggaran!!, finalAmount, startDate, endDate, finalName)
+
+                            scope.launch {
+                                val success = if (editingAnggaran == null) {
+                                    viewModel.addAnggaran(finalName, selectedCategory, finalAmount, startDate, endDate)
+                                } else {
+                                    viewModel.updateAnggaran(editingAnggaran!!, finalAmount, startDate, endDate, finalName)
+                                }
+
+                                if (success) {
+                                    showDialog = false
+                                } else {
+                                    Toast.makeText(context, "Gagal, anggaran untuk kategori ini di rentang waktu tersebut sudah ada.", Toast.LENGTH_LONG).show()
+                                }
                             }
-                            showDialog = false
                         } else {
                             Toast.makeText(context, "Harap isi semua field dengan benar.", Toast.LENGTH_SHORT).show()
                         }
